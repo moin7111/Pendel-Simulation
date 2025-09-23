@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pendel-Simulator</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Pendel‑Simulator</h1>
+      <nav>
+        <button id="modeDouble" class="btn">Doppelpendel</button>
+        <button id="modeSingle" class="btn">Einzelpendel</button>
+        <button id="toggleTrail" class="btn">Spur an/aus</button>
+        <button id="resetBtn" class="btn">Reset</button>
+        <button id="startBtn" class="btn primary">Start</button>
+        <button id="stopBtn" class="btn">Stopp</button>
+      </nav>
+    </header>
+
+    <main class="app-main">
+      <section class="canvas-wrap">
+        <canvas id="pendulumCanvas" width="900" height="600"></canvas>
+        <div class="time-display">Zeit: <span id="timeValue">0.00</span> s</div>
+      </section>
+      <aside class="controls">
+        <div class="control-group">
+          <label>Länge L1 (m): <input id="l1" type="number" step="0.1" value="1.0" /></label>
+          <label>Länge L2 (m): <input id="l2" type="number" step="0.1" value="1.0" /></label>
+          <label>Masse m1 (kg): <input id="m1" type="number" step="0.1" value="1.0" /></label>
+          <label>Masse m2 (kg): <input id="m2" type="number" step="0.1" value="1.0" /></label>
+          <label>g (m/s²): <input id="g" type="number" step="0.1" value="9.81" /></label>
+          <label>Dämpfung: <input id="damping" type="number" step="0.01" value="0.00" /></label>
+          <label>Δt (s): <input id="dt" type="number" step="0.001" value="0.008" /></label>
+        </div>
+        <div class="control-group">
+          <label>θ1 (°): <input id="th1" type="number" step="1" value="45" /></label>
+          <label>ω1 (rad/s): <input id="w1" type="number" step="0.1" value="0" /></label>
+          <label>θ2 (°): <input id="th2" type="number" step="1" value="-30" /></label>
+          <label>ω2 (rad/s): <input id="w2" type="number" step="0.1" value="0" /></label>
+        </div>
+      </aside>
+    </main>
+
+    <script src="/static/sim.js"></script>
+  </body>
+  </html>
+
