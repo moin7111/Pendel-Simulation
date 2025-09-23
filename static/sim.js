@@ -2,6 +2,10 @@
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 
+function toRad(deg) { return deg * Math.PI / 180; }
+
+function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+
 const Physics = {
   singleDerivatives: (state, p) => {
     const [theta, omega] = state;
@@ -59,21 +63,47 @@ const Physics = {
   }
 };
 
+function makeSystem(id, baseColor) {
+  return {
+    id,
+    state: [toRad(45), 0, toRad(-30), 0],
+    initialAngles: [toRad(45), toRad(-30)],
+    trail: [],
+    color: {
+      bob1: baseColor,
+      bob2: baseColor,
+      trailRgb: baseColor.startsWith('#') ? hexToRgb(baseColor) : { r: 51, g: 102, b: 204 }
+    }
+  };
+}
+
+function hexToRgb(hex) {
+  const v = hex.replace('#', '');
+  const bigint = parseInt(v.length === 3 ? v.split('').map(c => c + c).join('') : v, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return { r, g, b };
+}
+
 class PendulumSim {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.state = [toRad(45), 0, toRad(-30), 0];
     this.params = { m1: 1.0, m2: 1.0, l1: 1.0, l2: 1.0, g: 9.81, damping: 0.0 };
     this.scale = 150; // px per meter
     this.mode = 'double';
-    this.trail = [];
     this.trailEnabled = true;
+    this.persistTrail = true; // trails remain until reset
     this.maxTrail = 200;
     this.running = false;
     this.time = 0;
     this.dt = 0.008;
+    this.speedFactor = 1.0;
     this.lastTs = 0;
+    this.systems = [makeSystem(0, '#2563EB')];
+    this.activeSystemIndex = 0;
+    this._lastGeom = {};
     this._bindInputs();
     this._draw();
   }
@@ -87,16 +117,71 @@ class PendulumSim {
     byId('g').addEventListener('input', setParam('g', parseFloat));
     byId('damping').addEventListener('input', setParam('damping', parseFloat));
     byId('dt').addEventListener('input', (e) => { this.dt = clamp(parseFloat(e.target.value) || 0.008, 0.001, 0.05); });
-    byId('th1').addEventListener('input', (e) => { this.state[0] = toRad(parseFloat(e.target.value) || 0); this.state[1] = 0; this._draw(); });
-    byId('w1').addEventListener('input', (e) => { this.state[1] = parseFloat(e.target.value) || 0; this._draw(); });
-    byId('th2').addEventListener('input', (e) => { this.state[2] = toRad(parseFloat(e.target.value) || 0); this.state[3] = 0; this._draw(); });
-    byId('w2').addEventListener('input', (e) => { this.state[3] = parseFloat(e.target.value) || 0; this._draw(); });
+
+    // angles/velocities apply to active pendulum
+    byId('th1').addEventListener('input', (e) => {
+      const sys = this.systems[this.activeSystemIndex];
+      sys.state[0] = toRad(parseFloat(e.target.value) || 0); sys.state[1] = 0; sys.initialAngles[0] = sys.state[0]; this._draw();
+    });
+    byId('w1').addEventListener('input', (e) => { const sys = this.systems[this.activeSystemIndex]; sys.state[1] = parseFloat(e.target.value) || 0; this._draw(); });
+    byId('th2').addEventListener('input', (e) => {
+      const sys = this.systems[this.activeSystemIndex];
+      sys.state[2] = toRad(parseFloat(e.target.value) || 0); sys.state[3] = 0; sys.initialAngles[1] = sys.state[2]; this._draw();
+    });
+    byId('w2').addEventListener('input', (e) => { const sys = this.systems[this.activeSystemIndex]; sys.state[3] = parseFloat(e.target.value) || 0; this._draw(); });
+
+    // modes apply globally
     byId('modeDouble').addEventListener('click', () => { this.mode = 'double'; this._draw(); });
     byId('modeSingle').addEventListener('click', () => { this.mode = 'single'; this._draw(); });
-    byId('toggleTrail').addEventListener('click', () => { this.trailEnabled = !this.trailEnabled; if (!this.trailEnabled) this.trail = []; });
+
+    // trails
+    byId('toggleTrail').addEventListener('click', () => { this.trailEnabled = !this.trailEnabled; /* do not clear to keep persistent until reset */ this._draw(); });
+    const persistEl = byId('persistTrail'); if (persistEl) { persistEl.addEventListener('change', (e) => { this.persistTrail = !!e.target.checked; }); }
+
+    // speed factor
+    const speedSlider = byId('speedFactor');
+    const speedNum = byId('speedFactorNum');
+    const syncSpeed = (val) => { const v = clamp(parseFloat(val) || 1, 0.1, 10); this.speedFactor = v; speedSlider.value = String(v); speedNum.value = String(v); };
+    if (speedSlider) speedSlider.addEventListener('input', (e) => syncSpeed(e.target.value));
+    if (speedNum) speedNum.addEventListener('input', (e) => syncSpeed(e.target.value));
+
+    // active pendulum selector
+    const activeSel = byId('activePendulum');
+    if (activeSel) activeSel.addEventListener('change', (e) => { this.activeSystemIndex = parseInt(e.target.value, 10) || 0; this._draw(); });
+
+    // add/remove pendulum
+    const addBtn = byId('addPendulum');
+    if (addBtn) addBtn.addEventListener('click', () => {
+      if (this.systems.length >= 2) return;
+      const sys = makeSystem(1, '#F59E0B');
+      // copy current inputs as starting values
+      const th1 = toRad(parseFloat(document.getElementById('th1').value) || 45);
+      const th2 = toRad(parseFloat(document.getElementById('th2').value) || -30);
+      sys.state = [th1, 0, th2, 0];
+      sys.initialAngles = [th1, th2];
+      this.systems.push(sys);
+      if (activeSel) { activeSel.value = '1'; this.activeSystemIndex = 1; }
+      this._draw();
+    });
+    const removeBtn = byId('removePendulum');
+    if (removeBtn) removeBtn.addEventListener('click', () => {
+      if (this.systems.length <= 1) return;
+      this.systems = [this.systems[0]];
+      if (activeSel) { activeSel.value = '0'; this.activeSystemIndex = 0; }
+      this._draw();
+    });
+
+    // collapse controls
+    const toggleControls = byId('toggleControls');
+    if (toggleControls) toggleControls.addEventListener('click', () => {
+      const aside = document.querySelector('.controls');
+      if (aside) aside.classList.toggle('collapsed');
+    });
+
     byId('startBtn').addEventListener('click', () => this.start());
     byId('stopBtn').addEventListener('click', () => this.stop());
     byId('resetBtn').addEventListener('click', () => this.reset());
+
     this.canvas.addEventListener('mousedown', (e) => this._onPointerDown(e));
     this.canvas.addEventListener('mousemove', (e) => this._onPointerMove(e));
     window.addEventListener('mouseup', () => this._onPointerUp());
@@ -115,7 +200,7 @@ class PendulumSim {
       const elapsed = (ts - this.lastTs) / 1000;
       this.lastTs = ts;
       // integrate in fixed dt steps for stability
-      let acc = elapsed;
+      let acc = elapsed * this.speedFactor;
       const stepsMax = 100;
       let steps = 0;
       while (acc > 1e-6 && steps < stepsMax) {
@@ -129,17 +214,20 @@ class PendulumSim {
   }
   stop() { this.running = false; }
   reset() {
-    this.trail = [];
+    // clear trails
+    this.systems.forEach((sys) => { sys.trail = []; sys.state = [sys.initialAngles[0], 0, sys.initialAngles[1], 0]; });
     this.time = 0;
-    this.state = [toRad(45), 0, toRad(-30), 0];
     this._draw();
   }
   _step(dt) {
     const deriv = this.mode === 'double' ? Physics.doubleDerivatives : Physics.singleDerivatives;
-    const state = this.mode === 'double' ? this.state : this.state.slice(0,2);
-    const next = Physics.rk4Step(state, dt, this.params, deriv);
-    if (this.mode === 'double') this.state = next; else this.state = [next[0], next[1], this.state[2], this.state[3]];
-    this.state = Physics.normalizeAngles(this.state);
+    for (let i = 0; i < this.systems.length; i++) {
+      const sys = this.systems[i];
+      const stateLocal = this.mode === 'double' ? sys.state : sys.state.slice(0, 2);
+      const next = Physics.rk4Step(stateLocal, dt, this.params, deriv);
+      if (this.mode === 'double') sys.state = next; else sys.state = [next[0], next[1], sys.state[2], sys.state[3]];
+      sys.state = Physics.normalizeAngles(sys.state);
+    }
     this.time += dt;
     this._draw();
   }
@@ -163,50 +251,54 @@ class PendulumSim {
     // origin and geometry
     const originX = w / 2; const originY = h * 0.2;
     const l1 = this.params.l1 * this.scale; const l2 = this.params.l2 * this.scale;
-    let x1, y1, x2, y2;
-    if (this.mode === 'double') {
-      const [th1, , th2] = this.state;
-      x1 = originX + l1 * Math.sin(th1);
-      y1 = originY + l1 * Math.cos(th1);
-      x2 = x1 + l2 * Math.sin(th2);
-      y2 = y1 + l2 * Math.cos(th2);
-    } else {
-      const [th1] = this.state;
-      x1 = originX + l1 * Math.sin(th1);
-      y1 = originY + l1 * Math.cos(th1);
-      x2 = x1; y2 = y1;
-    }
-    // trail
-    if (this.trailEnabled) {
-      this.trail.push([x2, y2]);
-      if (this.trail.length > this.maxTrail) this.trail.shift();
-      for (let i = 1; i < this.trail.length; i++) {
-        const alpha = 0.3 + 0.7 * (i / this.trail.length);
-        ctx.strokeStyle = `rgba(51,102,204,${alpha.toFixed(3)})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(this.trail[i-1][0], this.trail[i-1][1]);
-        ctx.lineTo(this.trail[i][0], this.trail[i][1]);
-        ctx.stroke();
+    this._lastGeom = {};
+    for (let i = 0; i < this.systems.length; i++) {
+      const sys = this.systems[i];
+      let x1, y1, x2, y2;
+      if (this.mode === 'double') {
+        const [th1, , th2] = sys.state;
+        x1 = originX + l1 * Math.sin(th1);
+        y1 = originY + l1 * Math.cos(th1);
+        x2 = x1 + l2 * Math.sin(th2);
+        y2 = y1 + l2 * Math.cos(th2);
+      } else {
+        const [th1] = sys.state;
+        x1 = originX + l1 * Math.sin(th1);
+        y1 = originY + l1 * Math.cos(th1);
+        x2 = x1; y2 = y1;
       }
-    } else {
-      this.trail = [];
+      this._lastGeom[sys.id] = { originX, originY, x1, y1, l1, l2, x2, y2 };
+
+      // trail per system
+      if (this.trailEnabled) {
+        sys.trail.push([x2, y2]);
+        if (!this.persistTrail && sys.trail.length > this.maxTrail) sys.trail.shift();
+        for (let t = 1; t < sys.trail.length; t++) {
+          const alpha = 0.25 + 0.75 * (t / sys.trail.length);
+          const { r, g, b } = sys.color.trailRgb;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(sys.trail[t-1][0], sys.trail[t-1][1]);
+          ctx.lineTo(sys.trail[t][0], sys.trail[t][1]);
+          ctx.stroke();
+        }
+      }
+
+      // rods
+      ctx.strokeStyle = '#9ca3af';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(originX, originY); ctx.lineTo(x1, y1); ctx.stroke();
+      if (this.mode === 'double') { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+      // bobs colored by system
+      ctx.fillStyle = sys.color.bob1; circle(ctx, x1, y1, 10);
+      if (this.mode === 'double') { ctx.fillStyle = sys.color.bob2; circle(ctx, x2, y2, 8); }
     }
-    // rods
-    ctx.strokeStyle = '#9ca3af';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(originX, originY); ctx.lineTo(x1, y1); ctx.stroke();
-    if (this.mode === 'double') { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
-    // bobs
-    ctx.fillStyle = '#2563EB';
-    circle(ctx, x1, y1, 10);
-    if (this.mode === 'double') { ctx.fillStyle = '#DC2626'; circle(ctx, x2, y2, 8); }
     // origin
     ctx.fillStyle = '#e5e7eb'; circle(ctx, originX, originY, 4);
     // time
     document.getElementById('timeValue').textContent = this.time.toFixed(2);
-    this._lastGeom = { originX, originY, x1, y1, l1, l2 };
   }
   _onPointerDown(e) {
     this._dragging = this._hitTest(e);
@@ -216,20 +308,26 @@ class PendulumSim {
     const rect = this.canvas.getBoundingClientRect();
     const px = (e.clientX - rect.left);
     const py = (e.clientY - rect.top);
-    const { originX, originY, x1, y1, l1 } = this._lastGeom || {};
-    if (!originX) return;
+    const { sysId, part } = this._dragging;
+    const geom = this._lastGeom[sysId] || {};
+    const { originX, originY, l1 } = geom;
+    if (originX == null) return;
     const angleFrom = (ox, oy, tx, ty) => Math.atan2(tx - ox, ty - oy);
-    if (this._dragging === 'bob1') {
+    const sys = this.systems.find(s => s.id === sysId);
+    if (!sys) return;
+    if (part === 'bob1') {
       const th1 = angleFrom(originX, originY, px, py);
-      this.state[0] = th1; this.state[1] = 0;
-    } else if (this._dragging === 'bob2' && this.mode === 'double') {
-      const th1 = this.state[0];
+      sys.state[0] = th1; sys.state[1] = 0;
+      sys.initialAngles[0] = th1;
+    } else if (part === 'bob2' && this.mode === 'double') {
+      const th1 = sys.state[0];
       const nx1 = originX + l1 * Math.sin(th1);
-      const ny1 = originY + l1 * Math.cos(th1);
+      const ny1 = geom.originY + l1 * Math.cos(th1);
       const th2 = angleFrom(nx1, ny1, px, py);
-      this.state[2] = th2; this.state[3] = 0;
+      sys.state[2] = th2; sys.state[3] = 0;
+      sys.initialAngles[1] = th2;
     }
-    this.state = Physics.normalizeAngles(this.state);
+    sys.state = Physics.normalizeAngles(sys.state);
     this._draw();
   }
   _onPointerUp() { this._dragging = null; }
@@ -237,20 +335,22 @@ class PendulumSim {
     const rect = this.canvas.getBoundingClientRect();
     const px = (e.clientX - rect.left);
     const py = (e.clientY - rect.top);
-    const { x1, y1 } = this._lastGeom || {};
-    if (!x1) return null;
     const dist2 = (ax, ay, bx, by) => (ax-bx)*(ax-bx) + (ay-by)*(ay-by);
-    if (this.mode === 'double' && this.trail.length > 0) {
-      const [x2, y2] = this.trail[this.trail.length - 1];
-      if (dist2(px, py, x2, y2) < 20*20) return 'bob2';
+    let best = null; let bestD = Infinity;
+    for (let i = 0; i < this.systems.length; i++) {
+      const sys = this.systems[i];
+      const g = this._lastGeom[sys.id];
+      if (!g) continue;
+      const d1 = dist2(px, py, g.x1, g.y1);
+      if (d1 < bestD && d1 < 20*20) { bestD = d1; best = { sysId: sys.id, part: 'bob1' }; }
+      if (this.mode === 'double') {
+        const d2 = dist2(px, py, g.x2, g.y2);
+        if (d2 < bestD && d2 < 20*20) { bestD = d2; best = { sysId: sys.id, part: 'bob2' }; }
+      }
     }
-    if (dist2(px, py, x1, y1) < 20*20) return 'bob1';
-    return null;
+    return best;
   }
 }
-
-function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
-function toRad(deg) { return deg * Math.PI / 180; }
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('pendulumCanvas');
