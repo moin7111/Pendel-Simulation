@@ -3,6 +3,7 @@
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 
 function toRad(deg) { return deg * Math.PI / 180; }
+function toDeg(rad) { return rad * 180 / Math.PI; }
 
 function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
 
@@ -68,6 +69,8 @@ function makeSystem(id, baseColor) {
     id,
     state: [toRad(45), 0, toRad(-30), 0],
     initialAngles: [toRad(45), toRad(-30)],
+    m1: 1.0,
+    m2: 1.0,
     trail: [],
     color: {
       bob1: baseColor,
@@ -105,6 +108,7 @@ class PendulumSim {
     this.activeSystemIndex = 0;
     this._lastGeom = {};
     this._bindInputs();
+    this._syncInputsFromActiveSystem();
     this._draw();
   }
   _bindInputs() {
@@ -112,8 +116,8 @@ class PendulumSim {
     const setParam = (key, parse) => (e) => { this.params[key] = parse(e.target.value); };
     byId('l1').addEventListener('input', setParam('l1', parseFloat));
     byId('l2').addEventListener('input', setParam('l2', parseFloat));
-    byId('m1').addEventListener('input', setParam('m1', parseFloat));
-    byId('m2').addEventListener('input', setParam('m2', parseFloat));
+    byId('m1').addEventListener('input', (e) => { const v = parseFloat(e.target.value); const sys = this.systems[this.activeSystemIndex]; sys.m1 = isNaN(v) ? sys.m1 : v; });
+    byId('m2').addEventListener('input', (e) => { const v = parseFloat(e.target.value); const sys = this.systems[this.activeSystemIndex]; sys.m2 = isNaN(v) ? sys.m2 : v; });
     byId('g').addEventListener('input', setParam('g', parseFloat));
     byId('damping').addEventListener('input', setParam('damping', parseFloat));
     byId('dt').addEventListener('input', (e) => { this.dt = clamp(parseFloat(e.target.value) || 0.008, 0.001, 0.05); });
@@ -147,7 +151,7 @@ class PendulumSim {
 
     // active pendulum selector
     const activeSel = byId('activePendulum');
-    if (activeSel) activeSel.addEventListener('change', (e) => { this.activeSystemIndex = parseInt(e.target.value, 10) || 0; this._draw(); });
+    if (activeSel) activeSel.addEventListener('change', (e) => { this.activeSystemIndex = parseInt(e.target.value, 10) || 0; this._syncInputsFromActiveSystem(); this._draw(); });
 
     // add/remove pendulum
     const addBtn = byId('addPendulum');
@@ -157,10 +161,14 @@ class PendulumSim {
       // copy current inputs as starting values
       const th1 = toRad(parseFloat(document.getElementById('th1').value) || 45);
       const th2 = toRad(parseFloat(document.getElementById('th2').value) || -30);
+      const m1 = parseFloat(document.getElementById('m1').value) || 1.0;
+      const m2 = parseFloat(document.getElementById('m2').value) || 1.0;
       sys.state = [th1, 0, th2, 0];
       sys.initialAngles = [th1, th2];
+      sys.m1 = m1; sys.m2 = m2;
       this.systems.push(sys);
       if (activeSel) { activeSel.value = '1'; this.activeSystemIndex = 1; }
+      this._syncInputsFromActiveSystem();
       this._draw();
     });
     const removeBtn = byId('removePendulum');
@@ -168,6 +176,7 @@ class PendulumSim {
       if (this.systems.length <= 1) return;
       this.systems = [this.systems[0]];
       if (activeSel) { activeSel.value = '0'; this.activeSystemIndex = 0; }
+      this._syncInputsFromActiveSystem();
       this._draw();
     });
 
@@ -224,7 +233,8 @@ class PendulumSim {
     for (let i = 0; i < this.systems.length; i++) {
       const sys = this.systems[i];
       const stateLocal = this.mode === 'double' ? sys.state : sys.state.slice(0, 2);
-      const next = Physics.rk4Step(stateLocal, dt, this.params, deriv);
+      const paramsLocal = Object.assign({}, this.params, { m1: sys.m1 ?? this.params.m1, m2: sys.m2 ?? this.params.m2 });
+      const next = Physics.rk4Step(stateLocal, dt, paramsLocal, deriv);
       if (this.mode === 'double') sys.state = next; else sys.state = [next[0], next[1], sys.state[2], sys.state[3]];
       sys.state = Physics.normalizeAngles(sys.state);
     }
@@ -319,6 +329,9 @@ class PendulumSim {
       const th1 = angleFrom(originX, originY, px, py);
       sys.state[0] = th1; sys.state[1] = 0;
       sys.initialAngles[0] = th1;
+      if (sys.id === this.activeSystemIndex) {
+        const th1El = document.getElementById('th1'); if (th1El) th1El.value = String(Math.round(toDeg(th1)));
+      }
     } else if (part === 'bob2' && this.mode === 'double') {
       const th1 = sys.state[0];
       const nx1 = originX + l1 * Math.sin(th1);
@@ -326,6 +339,9 @@ class PendulumSim {
       const th2 = angleFrom(nx1, ny1, px, py);
       sys.state[2] = th2; sys.state[3] = 0;
       sys.initialAngles[1] = th2;
+      if (sys.id === this.activeSystemIndex) {
+        const th2El = document.getElementById('th2'); if (th2El) th2El.value = String(Math.round(toDeg(th2)));
+      }
     }
     sys.state = Physics.normalizeAngles(sys.state);
     this._draw();
@@ -351,6 +367,20 @@ class PendulumSim {
     return best;
   }
 }
+
+PendulumSim.prototype._syncInputsFromActiveSystem = function() {
+  try {
+    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
+    const el = (id) => document.getElementById(id);
+    const m1El = el('m1'); if (m1El && typeof sys.m1 === 'number') m1El.value = String(sys.m1);
+    const m2El = el('m2'); if (m2El && typeof sys.m2 === 'number') m2El.value = String(sys.m2);
+    const th1El = el('th1'); if (th1El) th1El.value = String(Math.round(toDeg(sys.state[0])));
+    const th2El = el('th2'); if (th2El) th2El.value = String(Math.round(toDeg(sys.state[2])));
+    const w1El = el('w1'); if (w1El) w1El.value = String(sys.state[1].toFixed(2));
+    const w2El = el('w2'); if (w2El) w2El.value = String(sys.state[3].toFixed(2));
+    const actEl = el('activePendulum'); if (actEl) actEl.value = String(this.activeSystemIndex);
+  } catch (_) { /* ignore */ }
+};
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('pendulumCanvas');
