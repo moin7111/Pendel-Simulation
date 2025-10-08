@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Logistische Karte — Simulation</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+      .grid { display: grid; grid-template-columns: 320px 1fr; gap: 12px; padding: 12px; height: calc(100% - 58px); }
+      .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 10px; padding: 12px; overflow: auto; }
+      .plots { display: grid; grid-template-columns: 1fr 420px; gap: 12px; height: 100%; }
+      .plot { position: relative; background: #0b1220; border: 1px solid #1f2937; border-radius: 10px; padding: 8px; }
+      .plot canvas { width: 100%; height: 100%; display: block; background: #0a0f1a; border-radius: 6px; border: 1px solid #1f2937; }
+      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .range-wrap { display: grid; grid-template-columns: 1fr 72px; gap: 8px; align-items: center; }
+      .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+      .tab-btn { padding: 6px 10px; border: 1px solid #374151; background: #0b1220; color: var(--text); border-radius: 6px; cursor: pointer; }
+      .tab-btn.active { background: #1f2937; }
+      .help { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Logistische Karte — interaktive Simulation</h1>
+      <nav>
+        <a href="/" class="btn">Hub</a>
+        <a href="/pendel" class="btn">Pendel</a>
+        <button id="resetBtn" class="btn">Reset</button>
+        <button id="playBtn" class="btn primary">Play</button>
+        <button id="pauseBtn" class="btn">Pause</button>
+      </nav>
+    </header>
+
+    <main class="grid">
+      <aside class="panel" aria-label="Steuerung">
+        <div class="control-group">
+          <label>r (Wachstumsrate)
+            <span class="range-wrap">
+              <input id="rSlider" type="range" min="2.5" max="4.0" step="0.001" value="2.50" />
+              <input id="rInput" type="number" min="2.5" max="4.0" step="0.001" value="2.50" />
+            </span>
+          </label>
+          <label>x₀ (Startwert)
+            <input id="x0Input" type="number" min="0" max="1" step="0.001" value="0.5" />
+          </label>
+          <label>Geschwindigkeit
+            <span class="range-wrap">
+              <input id="speedSlider" type="range" min="0.1" max="5" step="0.1" value="1" />
+              <input id="speedNum" type="number" min="0.1" max="5" step="0.1" value="1" />
+            </span>
+          </label>
+        </div>
+        <div class="control-group">
+          <div class="row">
+            <button class="btn" data-preset="2.5">Preset r=2.5</button>
+            <button class="btn" data-preset="3.2">r=3.2</button>
+          </div>
+          <div class="row">
+            <button class="btn" data-preset="3.57">r=3.57</button>
+            <button class="btn" data-preset="3.8">r=3.8</button>
+            <button class="btn" data-preset="4.0">r=4.0</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <label>Auflösung Bifurkation
+            <select id="resolution">
+              <option value="low">Low (1500 r)</option>
+              <option value="med" selected>Medium (3000 r)</option>
+              <option value="high">High (5000 r)</option>
+            </select>
+          </label>
+          <button id="recomputeBif" class="btn">Bifurkation neu berechnen</button>
+          <div class="muted">Iterationen: 2000; verwerfe 1000; plotte 500.</div>
+        </div>
+        <div class="help muted">
+          <div>Formel: x<sub>n+1</sub> = r · x<sub>n</sub> · (1 − x<sub>n</sub>)</div>
+          <div>Chaos ≠ Zufall — deterministisch, aber empfindlich auf Parameter.</div>
+        </div>
+      </aside>
+
+      <section class="plots">
+        <div>
+          <div class="tabs">
+            <button id="tabTime" class="tab-btn active">Zeitreihe</button>
+            <button id="tabCobweb" class="tab-btn">Cobweb</button>
+          </div>
+          <div id="timePanel" class="plot" style="height: 46vh;">
+            <canvas id="timeCanvas" width="900" height="420" aria-label="Zeitreihen-Plot"></canvas>
+          </div>
+          <div id="cobwebPanel" class="plot" style="height: 46vh; display:none;">
+            <canvas id="cobwebCanvas" width="900" height="420" aria-label="Cobweb-Plot"></canvas>
+          </div>
+        </div>
+        <div>
+          <div class="plot" style="height: 94vh;">
+            <div class="toolbar">
+              <span class="muted">Bifurkationsdiagramm</span>
+              <span class="muted" id="bifInfo"></span>
+            </div>
+            <canvas id="bifCanvas" width="420" height="860" aria-label="Bifurkationsdiagramm"></canvas>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/logistic.js"></script>
+  </body>
+  </html>
+

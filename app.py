@@ -22,6 +22,10 @@ def create_app() -> Flask:
     def pendel():
         return send_from_directory(app.template_folder, "index.html")
 
+    @app.get("/logistic")
+    def logistic():
+        return send_from_directory(app.template_folder, "logistic.html")
+
     @app.get("/static/<path:filename>")
     def static_files(filename: str):
         return send_from_directory(app.static_folder, filename)
