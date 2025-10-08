@@ -10,7 +10,11 @@ def create_app() -> Flask:
     )
 
     @app.get("/")
-    def index():
+    def hub():
+        return send_from_directory(app.template_folder, "hub.html")
+
+    @app.get("/pendel")
+    def pendel():
         return send_from_directory(app.template_folder, "index.html")
 
     @app.get("/static/<path:filename>")
