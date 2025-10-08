@@ -13,6 +13,11 @@ def create_app() -> Flask:
     def hub():
         return send_from_directory(app.template_folder, "hub.html")
 
+    # Alias-Route für direkte Links wie /hub
+    @app.get("/hub")
+    def hub_alias():
+        return send_from_directory(app.template_folder, "hub.html")
+
     @app.get("/pendel")
     def pendel():
         return send_from_directory(app.template_folder, "index.html")
