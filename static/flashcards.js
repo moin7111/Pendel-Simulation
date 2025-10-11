@@ -469,97 +469,29 @@
     if (!rows.length) return;
     const { jsPDF } = window.jspdf;
 
-    const paper = getPaperSizeMm();
-    const unit = 'mm';
-    const pdf = new jsPDF({ unit, format: [paper.w, paper.h] });
-
-    const pageMargin = state.settings.pageMarginMm;
-    const cols = Math.max(1, parseInt(state.settings.pdfCols, 10) || 1);
-    const rowsPerPage = Math.max(1, parseInt(state.settings.pdfRows, 10) || 1);
-    const gap = state.settings.gapMm;
+    // Always one card per page
     const bleed = state.settings.bleedMm;
     const cardW = state.settings.widthMm + bleed * 2;
     const cardH = state.settings.heightMm + bleed * 2;
+    const pdf = new jsPDF({ unit: 'mm', format: [cardW, cardH] });
 
-    const innerW = paper.w - pageMargin * 2;
-    const innerH = paper.h - pageMargin * 2;
-    const gridW = cols * cardW + (cols - 1) * gap;
-    const gridH = rowsPerPage * cardH + (rowsPerPage - 1) * gap;
-    const startX = pageMargin + Math.max(0, (innerW - gridW) / 2);
-    const startY = pageMargin + Math.max(0, (innerH - gridH) / 2);
-
-    async function addPageOf(side, items) {
-      let i = 0;
-      for (const item of items) {
-        const col = i % cols;
-        const rowIdx = Math.floor(i / cols);
-        const x = startX + col * (cardW + gap);
-        const y = startY + rowIdx * (cardH + gap);
-        const canvas = await renderCardSideCanvas(side === 'front' ? (item.colA || '') : (item.colB || ''), side, 2, bleed);
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', x, y, cardW, cardH);
-        if (state.settings.cropMarks) drawCropMarks(pdf, x, y, cardW, cardH);
-        i++;
+    let isFirstPage = true;
+    for (const r of rows) {
+      if (!isFirstPage) pdf.addPage();
+      isFirstPage = false;
+      if (sideMode === 'front' || sideMode === 'both') {
+        const c1 = await renderCardSideCanvas(r.colA || '', 'front', 2, bleed);
+        pdf.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH);
+        if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
       }
-    }
-
-    async function addBackPage(items) {
-      let i = 0;
-      for (const item of items) {
-        let col = i % cols;
-        let rowIdx = Math.floor(i / cols);
-        if (state.settings.flip === 'long') {
-          col = (cols - 1) - col;
-        } else {
-          rowIdx = (rowsPerPage - 1) - rowIdx;
-        }
-        const x = startX + col * (cardW + gap);
-        const y = startY + rowIdx * (cardH + gap);
-        const canvas = await renderCardSideCanvas(item.colB || '', 'back', 2, bleed);
-        const imgData = canvas.toDataURL('image/png');
-        const rotation = state.settings.rotateBack ? 180 : 0;
-        pdf.addImage(imgData, 'PNG', x, y, cardW, cardH, undefined, 'FAST', rotation);
-        if (state.settings.cropMarks) drawCropMarks(pdf, x, y, cardW, cardH);
-        i++;
+      if (sideMode === 'both') {
+        pdf.addPage();
       }
-    }
-
-    const perPage = cols * rowsPerPage;
-    const total = rows.length;
-    let index = 0;
-
-    if (state.settings.paper === 'Card') {
-      // Single card per page, natural size
-      for (const r of rows) {
-        if (index > 0) pdf.addPage();
-        if (sideMode === 'front' || sideMode === 'both') {
-          const c1 = await renderCardSideCanvas(r.colA || '', 'front', 2, bleed);
-          pdf.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH);
-          if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
-        }
-        if (sideMode === 'back' || sideMode === 'both') {
-          if (sideMode === 'both') pdf.addPage();
-          const c2 = await renderCardSideCanvas(r.colB || '', 'back', 2, bleed);
-          const rot = state.settings.rotateBack ? 180 : 0;
-          pdf.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH, undefined, 'FAST', rot);
-          if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
-        }
-        index++;
-      }
-    } else {
-      while (index < total) {
-        const slice = rows.slice(index, Math.min(total, index + perPage));
-        if (sideMode === 'front') {
-          await addPageOf('front', slice);
-        } else if (sideMode === 'back') {
-          await addBackPage(slice);
-        } else {
-          await addPageOf('front', slice);
-          pdf.addPage();
-          await addBackPage(slice);
-        }
-        index += perPage;
-        if (index < total) pdf.addPage();
+      if (sideMode === 'back' || sideMode === 'both') {
+        const c2 = await renderCardSideCanvas(r.colB || '', 'back', 2, bleed);
+        const rot = state.settings.rotateBack ? 180 : 0;
+        pdf.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH, undefined, 'FAST', rot);
+        if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
       }
     }
 
