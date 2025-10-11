@@ -31,3 +31,6 @@ input { width: 100%; background: #0b1220; color: var(--text); border: 1px solid 
 /* Flashcards validation */
 .grid td.invalid { background: rgba(220, 38, 38, 0.15); }
 
+/* Drag handle column */
+.drag-handle { cursor: grab; user-select: none; color: var(--muted); text-align: center; }
+

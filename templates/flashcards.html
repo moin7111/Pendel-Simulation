@@ -20,19 +20,23 @@
       .field { display: grid; gap: 6px; margin-bottom: 8px; }
       select, input[type="number"], input[type="text"] { background: #0b1220; color: var(--text); border: 1px solid #374151; border-radius: 6px; padding: 6px 8px; }
     </style>
-    <!-- libs via CDN for MVP: PapaParse, SheetJS, jsPDF, html2canvas -->
+    <!-- libs via CDN for MVP: PapaParse, SheetJS, jsPDF, html2canvas, JSZip -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   </head>
   <body>
     <header class="app-header">
       <h1>Kartei‑Karten Generator</h1>
       <nav>
         <a href="/" class="btn">Hub</a>
-        <button id="generatePdf" class="btn primary">PDF exportieren</button>
-        <button id="generatePng" class="btn">PNG exportieren</button>
+        <button id="exportPdfBoth" class="btn primary">PDF Front+Back</button>
+        <button id="exportPdfFront" class="btn">PDF Front</button>
+        <button id="exportPdfBack" class="btn">PDF Back</button>
+        <button id="exportImages" class="btn">Bilder ZIP</button>
+        <button id="samplePdf" class="btn">Sample PDF</button>
       </nav>
     </header>
 
@@ -44,16 +48,20 @@
             <input id="fileInput" type="file" accept=".csv,.xlsx,.xls,.ods" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
           </label>
           <button id="addRow" class="btn">Zeile hinzufügen</button>
+          <button id="duplicateRows" class="btn">Ausgewählte duplizieren</button>
           <button id="deleteRows" class="btn">Ausgewählte löschen</button>
           <label class="row muted"><input id="hasHeader" type="checkbox" /> Erste Zeile ist Header</label>
           <span id="rowCount" class="muted">0 Zeilen</span>
           <span id="validation" class="muted"></span>
+          <button id="undo" class="btn">Undo</button>
+          <button id="redo" class="btn">Redo</button>
         </div>
 
         <table class="grid" id="dataGrid" aria-label="Tabellenansicht">
           <thead>
             <tr>
-              <th style="width:36px;"><input type="checkbox" id="selectAll" /></th>
+              <th style="width:36px;"><input type="checkbox" id="selectAll" title="Alle auswählen" /></th>
+              <th style="width:30px;">↕︎</th>
               <th>A (Vorderseite)</th>
               <th>B (Rückseite)</th>
             </tr>
@@ -63,6 +71,15 @@
       </section>
 
       <aside class="panel">
+        <div class="field">
+          <label>Sprache / Language</label>
+          <div class="row">
+            <select id="lang">
+              <option value="de" selected>Deutsch</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
         <div class="field">
           <label>Spaltenzuordnung</label>
           <div class="row">
@@ -110,11 +127,74 @@
         </div>
 
         <div class="field">
+          <label>PDF Export</label>
+          <div class="row">
+            <label class="muted">Papier
+              <select id="paper">
+                <option value="A4">A4 (210×297)</option>
+                <option value="Letter">Letter (216×279)</option>
+                <option value="Card">Karte = 1×1</option>
+              </select>
+            </label>
+            <label class="muted">Spalten <input id="pdfCols" type="number" min="1" value="2" /></label>
+            <label class="muted">Zeilen <input id="pdfRows" type="number" min="1" value="3" /></label>
+          </div>
+          <div class="row">
+            <label class="muted">Abstand (mm) <input id="gapmm" type="number" value="6" step="1" /></label>
+            <label class="muted">Seitenrand (mm) <input id="pagemm" type="number" value="12" step="1" /></label>
+          </div>
+          <div class="row">
+            <label class="muted">Duplex
+              <select id="flip">
+                <option value="long">Flip long edge</option>
+                <option value="short">Flip short edge</option>
+              </select>
+            </label>
+            <label class="row muted"><input id="rotateBack" type="checkbox" checked /> Rücken 180° drehen</label>
+          </div>
+          <div class="row">
+            <label class="row muted"><input id="cropMarks" type="checkbox" /> Schnittmarken</label>
+            <label class="muted">Bleed (mm) <input id="bleedmm" type="number" value="0" step="0.5" /></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Bild Export</label>
+          <div class="row">
+            <label class="muted">Format
+              <select id="imgFormat">
+                <option value="png">PNG</option>
+                <option value="jpg">JPG</option>
+              </select>
+            </label>
+            <label class="muted">DPI <input id="dpi" type="number" value="300" step="10" /></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Dateinamensvorlage</label>
+          <input id="filenameTpl" type="text" value="karte_{index}_{front}" />
+          <div class="muted">Platzhalter: {index}, {front}, {back}</div>
+        </div>
+
+        <div class="field">
           <label>Live‑Vorschau (erste ausgewählte Zeile)</label>
           <div class="card-preview">
             <div class="card" id="previewFront" aria-label="Vorderseite"></div>
             <div class="card" id="previewBack" aria-label="Rückseite"></div>
           </div>
+        </div>
+
+        <div class="field">
+          <label>Duplex‑Druck Anleitung</label>
+          <details>
+            <summary class="muted">Tipps für korrektes beidseitiges Drucken</summary>
+            <div class="muted">
+              Wähle im Druckdialog Duplex und stelle „Flip on long/short edge“ passend ein. 
+              Aktiviere optional „Rücken 180° drehen“, wenn die Rückseiten auf dem Ausdruck auf dem Kopf stehen.
+              Für präzises Schneiden nutze Schnittmarken und ggf. einen kleinen Bleed.
+            </div>
+          </details>
         </div>
       </aside>
     </main>
