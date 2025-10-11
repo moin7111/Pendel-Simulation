@@ -26,6 +26,10 @@ def create_app() -> Flask:
     def logistic():
         return send_from_directory(app.template_folder, "logistic.html")
 
+    @app.get("/flashcards")
+    def flashcards():
+        return send_from_directory(app.template_folder, "flashcards.html")
+
     @app.get("/static/<path:filename>")
     def static_files(filename: str):
         return send_from_directory(app.static_folder, filename)
