@@ -25,7 +25,7 @@
       colAKey: 0,
       colBKey: 1,
       // Export / layout
-      paper: "A4", // A4, Letter, Card
+      paper: "Card", // A4, Letter, Card (default Card = 1×1)
       pdfCols: 2,
       pdfRows: 3,
       gapMm: 6,
@@ -40,6 +40,18 @@
       filenameTpl: "karte_{index}_{front}",
       // Language
       lang: "de",
+      // Backgrounds
+      bgFrontDataUrl: null,
+      bgBackDataUrl: null,
+      bgMode: 'cover', // cover | contain
+      // Text position & sizing
+      posH: 'center', // left | center | right
+      posV: 'center', // top | center | bottom
+      offsetXmm: 0,
+      offsetYmm: 0,
+      sizeAuto: true,
+      fontFrontPx: DEFAULT_FONT_FRONT_PX,
+      fontBackPx: DEFAULT_FONT_BACK_PX,
     }
   };
 
@@ -66,6 +78,19 @@
     align: document.getElementById('align'),
     previewFront: document.getElementById('previewFront'),
     previewBack: document.getElementById('previewBack'),
+    // backgrounds & position
+    bgFront: document.getElementById('bgFront'),
+    bgBack: document.getElementById('bgBack'),
+    bgFrontClear: document.getElementById('bgFrontClear'),
+    bgBackClear: document.getElementById('bgBackClear'),
+    bgMode: document.getElementById('bgMode'),
+    posH: document.getElementById('posH'),
+    posV: document.getElementById('posV'),
+    offsetXmm: document.getElementById('offsetXmm'),
+    offsetYmm: document.getElementById('offsetYmm'),
+    sizeAuto: document.getElementById('sizeAuto'),
+    fontFrontPx: document.getElementById('fontFrontPx'),
+    fontBackPx: document.getElementById('fontBackPx'),
     // nav buttons
     exportPdfBoth: document.getElementById('exportPdfBoth'),
     exportPdfFront: document.getElementById('exportPdfFront'),
@@ -260,6 +285,56 @@
     return basePx;
   }
 
+  function computeJustify(posH) {
+    if (posH === 'left') return 'flex-start';
+    if (posH === 'right') return 'flex-end';
+    return 'center';
+  }
+
+  function computeAlign(posV) {
+    if (posV === 'top') return 'flex-start';
+    if (posV === 'bottom') return 'flex-end';
+    return 'center';
+  }
+
+  function applySideStyles(sideEl, text, side) {
+    const { marginMm, align, bgFrontDataUrl, bgBackDataUrl, bgMode, posH, posV, offsetXmm, offsetYmm, sizeAuto, fontFrontPx, fontBackPx } = state.settings;
+    const innerW = mmToPxDom(state.settings.widthMm) - mmToPxDom(marginMm) * 2;
+    const innerH = mmToPxDom(state.settings.heightMm) - mmToPxDom(marginMm) * 2;
+    sideEl.innerHTML = '';
+    sideEl.style.width = `${innerW}px`;
+    sideEl.style.height = `${innerH}px`;
+    sideEl.style.display = 'flex';
+    sideEl.style.justifyContent = computeJustify(posH);
+    sideEl.style.alignItems = computeAlign(posV);
+    sideEl.style.backgroundImage = '';
+    sideEl.style.backgroundRepeat = 'no-repeat';
+    sideEl.style.backgroundPosition = 'center';
+    sideEl.style.backgroundSize = bgMode === 'contain' ? 'contain' : 'cover';
+    // background per side
+    const bgUrl = side === 'front' ? bgFrontDataUrl : bgBackDataUrl;
+    if (bgUrl) sideEl.style.backgroundImage = `url(${bgUrl})`;
+
+    // inner span for text & offset
+    const span = document.createElement('span');
+    span.textContent = text || '';
+    span.style.display = 'inline-block';
+    const offX = mmToPxDom(offsetXmm);
+    const offY = mmToPxDom(offsetYmm);
+    span.style.transform = `translate(${offX}px, ${offY}px)`;
+    span.style.textAlign = align;
+
+    // font size
+    if (sizeAuto) {
+      const base = side === 'front' ? DEFAULT_FONT_FRONT_PX : DEFAULT_FONT_BACK_PX;
+      span.style.fontSize = `${autoFontSizeFor(span.textContent, base)}px`;
+    } else {
+      span.style.fontSize = `${side === 'front' ? (parseInt(fontFrontPx,10)||DEFAULT_FONT_FRONT_PX) : (parseInt(fontBackPx,10)||DEFAULT_FONT_BACK_PX)}px`;
+    }
+
+    sideEl.appendChild(span);
+  }
+
   function renderPreview() {
     const firstId = state.selectedIds.values().next().value;
     const row = state.rows.find(r => r.id === firstId) || state.rows[0];
@@ -270,18 +345,10 @@
     card.setAttribute('data-card','');
     const f = document.createElement('div'); f.setAttribute('data-front','');
     const b = document.createElement('div'); b.setAttribute('data-back','');
-    f.textContent = row.colA || '';
-    b.textContent = row.colB || '';
     card.appendChild(f); card.appendChild(b);
     applyThemeToCard(card);
-    const innerW = mmToPxDom(state.settings.widthMm) - mmToPxDom(state.settings.marginMm)*2;
-    const innerH = mmToPxDom(state.settings.heightMm) - mmToPxDom(state.settings.marginMm)*2;
-    f.style.width = b.style.width = `${innerW}px`;
-    f.style.height = b.style.height = `${innerH}px`;
-    f.style.display = b.style.display = 'grid';
-    f.style.placeItems = b.style.placeItems = 'center';
-    f.style.fontSize = `${autoFontSizeFor(f.textContent, DEFAULT_FONT_FRONT_PX)}px`;
-    b.style.fontSize = `${autoFontSizeFor(b.textContent, DEFAULT_FONT_BACK_PX)}px`;
+    applySideStyles(f, row.colA || '', 'front');
+    applySideStyles(b, row.colB || '', 'back');
     front.appendChild(f);
     back.appendChild(b);
   }
@@ -344,21 +411,14 @@
     const card = document.createElement('div');
     const f = document.createElement('div'); const b = document.createElement('div');
     f.setAttribute('data-front',''); b.setAttribute('data-back','');
-    f.textContent = frontText; b.textContent = backText;
     card.appendChild(f); card.appendChild(b);
     applyThemeToCard(card);
     card.style.width = `${mmToPxDom(totalWidthMm)}px`;
     card.style.height = `${mmToPxDom(totalHeightMm)}px`;
     card.style.display = 'grid';
     card.style.placeItems = 'center';
-    const innerW = mmToPxDom(totalWidthMm) - mmToPxDom(state.settings.marginMm)*2;
-    const innerH = mmToPxDom(totalHeightMm) - mmToPxDom(state.settings.marginMm)*2;
-    f.style.width = b.style.width = `${innerW}px`;
-    f.style.height = b.style.height = `${innerH}px`;
-    f.style.display = b.style.display = 'grid';
-    f.style.placeItems = b.style.placeItems = 'center';
-    f.style.fontSize = `${autoFontSizeFor(f.textContent, DEFAULT_FONT_FRONT_PX)}px`;
-    b.style.fontSize = `${autoFontSizeFor(b.textContent, DEFAULT_FONT_BACK_PX)}px`;
+    applySideStyles(f, frontText, 'front');
+    applySideStyles(b, backText, 'back');
     wrapper.appendChild(card);
     return { wrapper, card, f, b };
   }
@@ -367,6 +427,12 @@
     const totalW = state.settings.widthMm + includeBleed * 2;
     const totalH = state.settings.heightMm + includeBleed * 2;
     const { wrapper, card, f, b } = buildCardDom(side === 'front' ? text : '', side === 'back' ? text : '', totalW, totalH);
+    // Hide unused side to prevent layout shifts
+    if (side === 'front') {
+      b.style.display = 'none';
+    } else {
+      f.style.display = 'none';
+    }
     document.body.appendChild(wrapper);
     const canvas = await html2canvas(card, { backgroundColor: null, scale: scalePx });
     document.body.removeChild(wrapper);
@@ -403,97 +469,29 @@
     if (!rows.length) return;
     const { jsPDF } = window.jspdf;
 
-    const paper = getPaperSizeMm();
-    const unit = 'mm';
-    const pdf = new jsPDF({ unit, format: [paper.w, paper.h] });
-
-    const pageMargin = state.settings.pageMarginMm;
-    const cols = Math.max(1, parseInt(state.settings.pdfCols, 10) || 1);
-    const rowsPerPage = Math.max(1, parseInt(state.settings.pdfRows, 10) || 1);
-    const gap = state.settings.gapMm;
+    // Always one card per page
     const bleed = state.settings.bleedMm;
     const cardW = state.settings.widthMm + bleed * 2;
     const cardH = state.settings.heightMm + bleed * 2;
+    const pdf = new jsPDF({ unit: 'mm', format: [cardW, cardH] });
 
-    const innerW = paper.w - pageMargin * 2;
-    const innerH = paper.h - pageMargin * 2;
-    const gridW = cols * cardW + (cols - 1) * gap;
-    const gridH = rowsPerPage * cardH + (rowsPerPage - 1) * gap;
-    const startX = pageMargin + Math.max(0, (innerW - gridW) / 2);
-    const startY = pageMargin + Math.max(0, (innerH - gridH) / 2);
-
-    async function addPageOf(side, items) {
-      let i = 0;
-      for (const item of items) {
-        const col = i % cols;
-        const rowIdx = Math.floor(i / cols);
-        const x = startX + col * (cardW + gap);
-        const y = startY + rowIdx * (cardH + gap);
-        const canvas = await renderCardSideCanvas(side === 'front' ? (item.colA || '') : (item.colB || ''), side, 2, bleed);
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', x, y, cardW, cardH);
-        if (state.settings.cropMarks) drawCropMarks(pdf, x, y, cardW, cardH);
-        i++;
+    let isFirstPage = true;
+    for (const r of rows) {
+      if (!isFirstPage) pdf.addPage();
+      isFirstPage = false;
+      if (sideMode === 'front' || sideMode === 'both') {
+        const c1 = await renderCardSideCanvas(r.colA || '', 'front', 2, bleed);
+        pdf.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH);
+        if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
       }
-    }
-
-    async function addBackPage(items) {
-      let i = 0;
-      for (const item of items) {
-        let col = i % cols;
-        let rowIdx = Math.floor(i / cols);
-        if (state.settings.flip === 'long') {
-          col = (cols - 1) - col;
-        } else {
-          rowIdx = (rowsPerPage - 1) - rowIdx;
-        }
-        const x = startX + col * (cardW + gap);
-        const y = startY + rowIdx * (cardH + gap);
-        const canvas = await renderCardSideCanvas(item.colB || '', 'back', 2, bleed);
-        const imgData = canvas.toDataURL('image/png');
-        const rotation = state.settings.rotateBack ? 180 : 0;
-        pdf.addImage(imgData, 'PNG', x, y, cardW, cardH, undefined, 'FAST', rotation);
-        if (state.settings.cropMarks) drawCropMarks(pdf, x, y, cardW, cardH);
-        i++;
+      if (sideMode === 'both') {
+        pdf.addPage();
       }
-    }
-
-    const perPage = cols * rowsPerPage;
-    const total = rows.length;
-    let index = 0;
-
-    if (state.settings.paper === 'Card') {
-      // Single card per page, natural size
-      for (const r of rows) {
-        if (index > 0) pdf.addPage();
-        if (sideMode === 'front' || sideMode === 'both') {
-          const c1 = await renderCardSideCanvas(r.colA || '', 'front', 2, bleed);
-          pdf.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH);
-          if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
-        }
-        if (sideMode === 'back' || sideMode === 'both') {
-          if (sideMode === 'both') pdf.addPage();
-          const c2 = await renderCardSideCanvas(r.colB || '', 'back', 2, bleed);
-          const rot = state.settings.rotateBack ? 180 : 0;
-          pdf.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH, undefined, 'FAST', rot);
-          if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
-        }
-        index++;
-      }
-    } else {
-      while (index < total) {
-        const slice = rows.slice(index, Math.min(total, index + perPage));
-        if (sideMode === 'front') {
-          await addPageOf('front', slice);
-        } else if (sideMode === 'back') {
-          await addBackPage(slice);
-        } else {
-          await addPageOf('front', slice);
-          pdf.addPage();
-          await addBackPage(slice);
-        }
-        index += perPage;
-        if (index < total) pdf.addPage();
+      if (sideMode === 'back' || sideMode === 'both') {
+        const c2 = await renderCardSideCanvas(r.colB || '', 'back', 2, bleed);
+        const rot = state.settings.rotateBack ? 180 : 0;
+        pdf.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH, undefined, 'FAST', rot);
+        if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
       }
     }
 
@@ -590,6 +588,49 @@
   els.hmm.addEventListener('input', () => { state.settings.heightMm = parseFloat(els.hmm.value)||55; renderPreview(); });
   els.marginmm.addEventListener('input', () => { state.settings.marginMm = parseFloat(els.marginmm.value)||6; renderPreview(); });
   els.align.addEventListener('change', () => { state.settings.align = els.align.value; renderPreview(); });
+
+  // Backgrounds & positioning
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  els.bgFront && els.bgFront.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    state.settings.bgFrontDataUrl = String(await readFileAsDataUrl(file));
+    renderPreview();
+  });
+  els.bgBack && els.bgBack.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    state.settings.bgBackDataUrl = String(await readFileAsDataUrl(file));
+    renderPreview();
+  });
+  els.bgFrontClear && els.bgFrontClear.addEventListener('click', () => { state.settings.bgFrontDataUrl = null; renderPreview(); });
+  els.bgBackClear && els.bgBackClear.addEventListener('click', () => { state.settings.bgBackDataUrl = null; renderPreview(); });
+  els.bgMode && els.bgMode.addEventListener('change', () => { state.settings.bgMode = els.bgMode.value; renderPreview(); });
+  els.posH && els.posH.addEventListener('change', () => { state.settings.posH = els.posH.value; renderPreview(); });
+  els.posV && els.posV.addEventListener('change', () => { state.settings.posV = els.posV.value; renderPreview(); });
+  els.offsetXmm && els.offsetXmm.addEventListener('input', () => { state.settings.offsetXmm = parseFloat(els.offsetXmm.value)||0; renderPreview(); });
+  els.offsetYmm && els.offsetYmm.addEventListener('input', () => { state.settings.offsetYmm = parseFloat(els.offsetYmm.value)||0; renderPreview(); });
+  els.sizeAuto && els.sizeAuto.addEventListener('change', () => {
+    state.settings.sizeAuto = !!els.sizeAuto.checked;
+    if (state.settings.sizeAuto) {
+      els.fontFrontPx && (els.fontFrontPx.disabled = true);
+      els.fontBackPx && (els.fontBackPx.disabled = true);
+    } else {
+      els.fontFrontPx && (els.fontFrontPx.disabled = false);
+      els.fontBackPx && (els.fontBackPx.disabled = false);
+    }
+    renderPreview();
+  });
+  els.fontFrontPx && els.fontFrontPx.addEventListener('input', () => { state.settings.fontFrontPx = parseInt(els.fontFrontPx.value,10)||DEFAULT_FONT_FRONT_PX; renderPreview(); });
+  els.fontBackPx && els.fontBackPx.addEventListener('input', () => { state.settings.fontBackPx = parseInt(els.fontBackPx.value,10)||DEFAULT_FONT_BACK_PX; renderPreview(); });
 
   // Export controls
   els.paper && els.paper.addEventListener('change', () => { state.settings.paper = els.paper.value; });

@@ -107,6 +107,31 @@
             <input id="accent" type="color" value="#2563eb" title="Akzentfarbe" />
           </div>
         </div>
+
+        <div class="field">
+          <label>Hintergründe</label>
+          <div class="row">
+            <label class="btn" style="position: relative; overflow: hidden;">
+              Vorderseite Bild
+              <input id="bgFront" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
+            </label>
+            <button id="bgFrontClear" class="btn">Entfernen</button>
+          </div>
+          <div class="row">
+            <label class="btn" style="position: relative; overflow: hidden;">
+              Rückseite Bild
+              <input id="bgBack" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
+            </label>
+            <button id="bgBackClear" class="btn">Entfernen</button>
+          </div>
+          <div class="row">
+            <span class="muted">Bildanpassung:</span>
+            <select id="bgMode">
+              <option value="cover" selected>Füllen (cover)</option>
+              <option value="contain">Einpassen (contain)</option>
+            </select>
+          </div>
+        </div>
         <div class="field">
           <label>Größe & Ausrichtung</label>
           <div class="row">
@@ -127,13 +152,40 @@
         </div>
 
         <div class="field">
+          <label>Textposition & Größe</label>
+          <div class="row">
+            <span class="muted">Position:</span>
+            <select id="posH">
+              <option value="left">Links</option>
+              <option value="center" selected>Zentriert</option>
+              <option value="right">Rechts</option>
+            </select>
+            <select id="posV">
+              <option value="top">Oben</option>
+              <option value="center" selected>Mittig</option>
+              <option value="bottom">Unten</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="muted">Versatz (mm):</span>
+            <label class="muted">X <input id="offsetXmm" type="number" value="0" step="1" /></label>
+            <label class="muted">Y <input id="offsetYmm" type="number" value="0" step="1" /></label>
+          </div>
+          <div class="row">
+            <label class="row muted"><input id="sizeAuto" type="checkbox" checked /> Automatische Größe</label>
+            <label class="muted">Front px <input id="fontFrontPx" type="number" value="28" step="1" disabled /></label>
+            <label class="muted">Back px <input id="fontBackPx" type="number" value="24" step="1" disabled /></label>
+          </div>
+        </div>
+
+        <div class="field">
           <label>PDF Export</label>
           <div class="row">
             <label class="muted">Papier
               <select id="paper">
                 <option value="A4">A4 (210×297)</option>
                 <option value="Letter">Letter (216×279)</option>
-                <option value="Card">Karte = 1×1</option>
+                <option value="Card" selected>Karte = 1×1</option>
               </select>
             </label>
             <label class="muted">Spalten <input id="pdfCols" type="number" min="1" value="2" /></label>

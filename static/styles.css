@@ -34,3 +34,9 @@ input { width: 100%; background: #0b1220; color: var(--text); border: 1px solid 
 /* Drag handle column */
 .drag-handle { cursor: grab; user-select: none; color: var(--muted); text-align: center; }
 
+/* Flashcards preview spacing */
+.card-preview .card [data-front],
+.card-preview .card [data-back] {
+  border: 1px dashed rgba(148,163,184,.3);
+}
+
