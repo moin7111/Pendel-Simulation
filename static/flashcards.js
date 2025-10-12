@@ -35,8 +35,7 @@
       paperSize: 'A4', // A4 | A6
       filenameTpl: 'karte_{index}_{front}',
       // N-up / Print controls
-      flipEdge: 'long', // long | short
-      backRotation: 'auto', // auto | 0 | 180
+      // duplex mapping is fixed: long-edge + auto rotation
       pageMarginMm: 12,
       gapMm: 6,
       backOffsetXMm: 0,
@@ -83,8 +82,7 @@
     exportSide: document.getElementById('exportSide'),
     cardsPerPage: document.getElementById('cardsPerPage'),
     paperSize: document.getElementById('paperSize'),
-    flipEdge: document.getElementById('flipEdge'),
-    backRotation: document.getElementById('backRotation'),
+    // no flip/rotation UI
     pageMarginMm: document.getElementById('pageMarginMm'),
     gapMm: document.getElementById('gapMm'),
     backOffsetXMm: document.getElementById('backOffsetXMm'),
@@ -137,8 +135,7 @@
     if (els.cardsPerPage) els.cardsPerPage.value = String(s.cardsPerPage);
     if (els.paperSize) els.paperSize.value = String(s.paperSize);
     if (els.filenameTpl) els.filenameTpl.value = String(s.filenameTpl);
-    if (els.flipEdge) els.flipEdge.value = String(s.flipEdge);
-    if (els.backRotation) els.backRotation.value = String(s.backRotation);
+    // flip/rotation controls removed
     if (els.pageMarginMm) els.pageMarginMm.value = String(s.pageMarginMm);
     if (els.gapMm) els.gapMm.value = String(s.gapMm);
     if (els.backOffsetXMm) els.backOffsetXMm.value = String(s.backOffsetXMm);
@@ -485,28 +482,17 @@
     return best;
   }
 
-  function frontIndexToBackIndex(posIndex, cols, rows, flipEdge) {
+  function frontIndexToBackIndex(posIndex, cols, rows) {
     const r = Math.floor(posIndex / cols);
     const c = posIndex % cols;
-    if (flipEdge === 'long') {
-      // mirror horizontally (book flip)
-      const c2 = cols - c - 1;
-      return r * cols + c2;
-    } else {
-      // short edge: mirror vertically
-      const r2 = rows - r - 1;
-      return r2 * cols + c;
-    }
+    // fixed long-edge flip: mirror horizontally
+    const c2 = cols - c - 1;
+    return r * cols + c2;
   }
 
-  function effectiveBackRotation(paperLandscape, flipEdge, backRotationSetting) {
-    if (backRotationSetting !== 'auto') return parseInt(backRotationSetting,10) || 0;
-    // Heuristic: for portrait pages, long-edge flip needs 0°, short-edge needs 180°; swap for landscape
-    if (!paperLandscape) {
-      return flipEdge === 'long' ? 0 : 180;
-    } else {
-      return flipEdge === 'long' ? 180 : 0;
-    }
+  function effectiveBackRotation(paperLandscape) {
+    // fixed auto-rotation for long-edge duplex: 0° in portrait, 180° in landscape
+    return paperLandscape ? 180 : 0;
   }
 
   function drawCropMarks(pdf, x, y, w, h, markLen = 3, markOffset = 0.8) {
@@ -577,8 +563,8 @@
         const canvas = await renderCardSideCanvas(text, side, 2);
         let col = rIndex % cols;
         let row = Math.floor(rIndex / cols);
-        if (side === 'back') {
-          const backIdx = frontIndexToBackIndex(rIndex, cols, rowsPerPage, state.settings.flipEdge);
+          if (side === 'back') {
+            const backIdx = frontIndexToBackIndex(rIndex, cols, rowsPerPage);
           col = backIdx % cols;
           row = Math.floor(backIdx / cols);
         }
@@ -589,11 +575,7 @@
           y += parseFloat(state.settings.backOffsetYMm) || 0;
         }
         const dataUrl = canvas.toDataURL('image/png');
-        const rotation = side === 'back' ? effectiveBackRotation(
-          paper.w > paper.h,
-          state.settings.flipEdge,
-          state.settings.backRotation
-        ) : 0;
+          const rotation = side === 'back' ? effectiveBackRotation(paper.w > paper.h) : 0;
         pdf.addImage(dataUrl, 'PNG', x, y, drawW, drawH, undefined, undefined, rotation);
         if (state.settings.showMarks) drawCropMarks(pdf, x, y, drawW, drawH);
       }
@@ -680,7 +662,7 @@
           const r = selected[itemIndex];
           let col = rIndex % cols; let row = Math.floor(rIndex / cols);
           if (side === 'back') {
-            const backIdx = frontIndexToBackIndex(rIndex, cols, rowsPerPage, state.settings.flipEdge);
+            const backIdx = frontIndexToBackIndex(rIndex, cols, rowsPerPage);
             col = backIdx % cols; row = Math.floor(backIdx / cols);
           }
           const xMm = marginMm + col * (cellW + gapMm) + (cellW - drawW) / 2;
@@ -691,7 +673,7 @@
           const dh = mmToPxAtDpi(drawH, 96 * scale);
           const cardCanvas = await renderCardSideCanvas(side === 'front' ? (r.colA||'') : (r.colB||''), side, scale);
           // rotation for back in images is applied by rotating draw context if needed
-          const rot = side === 'back' ? effectiveBackRotation(paper.w > paper.h, state.settings.flipEdge, state.settings.backRotation) : 0;
+          const rot = side === 'back' ? effectiveBackRotation(paper.w > paper.h) : 0;
           if (rot) {
             ctx.save();
             ctx.translate(dx + dw/2, dy + dh/2);
