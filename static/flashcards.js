@@ -1,5 +1,6 @@
 (function(){
   const DEFAULT_FONT_PX = 28;
+  const STORAGE_KEY = 'flashcards_state_v1';
 
   const state = {
     columns: ["A", "B"],
@@ -76,6 +77,52 @@
     downloadBtn: document.getElementById('downloadBtn'),
     filenameTpl: document.getElementById('filenameTpl'),
   };
+  function saveState() {
+    try {
+      const { bgFrontDataUrl, bgBackDataUrl, ...rest } = state.settings;
+      const snapshot = {
+        rows: state.rows,
+        settings: { ...rest },
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    } catch (err) {
+      // ignore persistence errors
+    }
+  }
+
+  function syncControlsFromSettings() {
+    const s = state.settings;
+    els.alignToggle && (els.alignToggle.title = `Textausrichtung: ${s.align}`);
+    if (els.fontPx) els.fontPx.value = String(s.fontPx);
+    if (els.bgColor) els.bgColor.value = String(s.bgColor);
+    if (els.borderEnabled) els.borderEnabled.checked = !!s.borderEnabled;
+    if (els.borderColor) els.borderColor.value = String(s.borderColor);
+    if (els.bgMode) els.bgMode.value = String(s.bgMode);
+    if (els.exportFormat) els.exportFormat.value = String(s.exportFormat);
+    if (els.exportSide) els.exportSide.value = String(s.exportSide);
+    if (els.cardsPerPage) els.cardsPerPage.value = String(s.cardsPerPage);
+    if (els.paperSize) els.paperSize.value = String(s.paperSize);
+    if (els.filenameTpl) els.filenameTpl.value = String(s.filenameTpl);
+  }
+
+  function loadSavedState() {
+    try {
+      const json = localStorage.getItem(STORAGE_KEY);
+      if (!json) return false;
+      const data = JSON.parse(json);
+      if (Array.isArray(data.rows) && data.rows.length) {
+        state.rows = data.rows;
+        state.selectedIds = new Set([state.rows[0].id]);
+      }
+      if (data.settings && typeof data.settings === 'object') {
+        state.settings = { ...state.settings, ...data.settings };
+      }
+      syncControlsFromSettings();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 
   const uid = (()=>{ let n=1; return ()=>n++; })();
 
@@ -139,6 +186,7 @@
       const tr = document.createElement('tr');
       tr.setAttribute('draggable', 'true');
       tr.dataset.id = String(row.id);
+      if (state.selectedIds.has(row.id)) tr.classList.add('selected');
 
       tr.addEventListener('dragstart', (e) => {
         state.drag.draggingId = row.id;
@@ -160,6 +208,7 @@
         state.drag.draggingId = null;
         renderGrid();
         renderPreview();
+        saveState();
       });
 
       // Select checkbox
@@ -169,6 +218,7 @@
       cb.checked = state.selectedIds.has(row.id);
       cb.addEventListener('change', () => {
         if (cb.checked) state.selectedIds.add(row.id); else state.selectedIds.delete(row.id);
+        renderGrid();
         renderPreview();
       });
       tdSel.appendChild(cb);
@@ -178,15 +228,17 @@
       const tdDrag = document.createElement('td');
       tdDrag.textContent = '↕︎';
       tdDrag.className = 'drag-handle';
+      tdDrag.title = 'Ziehen zum Sortieren';
       tr.appendChild(tdDrag);
 
       // Column A
       const tdA = document.createElement('td');
       const inpA = document.createElement('input');
       inpA.value = row.colA || '';
-      const updateA = () => { row.colA = inpA.value; tdA.classList.toggle('invalid', !inpA.value.trim()); renderPreview(); updateValidation(); };
+      const updateA = () => { row.colA = inpA.value; tdA.classList.toggle('invalid', !inpA.value.trim()); renderPreview(); updateValidation(); saveState(); };
       inpA.addEventListener('input', updateA);
       tdA.classList.toggle('invalid', !inpA.value.trim());
+      inpA.setAttribute('aria-label', 'Vorderseite Text');
       tdA.appendChild(inpA);
       tr.appendChild(tdA);
 
@@ -194,15 +246,17 @@
       const tdB = document.createElement('td');
       const inpB = document.createElement('input');
       inpB.value = row.colB || '';
-      const updateB = () => { row.colB = inpB.value; tdB.classList.toggle('invalid', !inpB.value.trim()); renderPreview(); updateValidation(); };
+      const updateB = () => { row.colB = inpB.value; tdB.classList.toggle('invalid', !inpB.value.trim()); renderPreview(); updateValidation(); saveState(); };
       inpB.addEventListener('input', updateB);
       tdB.classList.toggle('invalid', !inpB.value.trim());
+      inpB.setAttribute('aria-label', 'Rückseite Text');
       tdB.appendChild(inpB);
       tr.appendChild(tdB);
 
       els.gridBody.appendChild(tr);
     }
-    els.rowCount.textContent = `${state.rows.length} Zeilen`;
+    const selectedCount = state.selectedIds.size ? ` · ${state.selectedIds.size} ausgewählt` : '';
+    els.rowCount.textContent = `${state.rows.length} Zeilen${selectedCount}`;
     updateValidation();
   }
 
@@ -273,7 +327,15 @@
     const row = state.rows.find(r => r.id === firstId) || state.rows[0];
     const front = els.previewFront; const back = els.previewBack;
     front.innerHTML = ''; back.innerHTML = '';
-    if (!row) return;
+    if (!row) {
+      const emptyFront = document.createElement('div');
+      emptyFront.className = 'empty';
+      emptyFront.textContent = 'Keine Daten. CSV/XLSX laden oder Zeile hinzufügen.';
+      const emptyBack = emptyFront.cloneNode(true);
+      front.appendChild(emptyFront);
+      back.appendChild(emptyBack);
+      return;
+    }
     const card = document.createElement('div');
     card.setAttribute('data-card','');
     const f = document.createElement('div'); f.setAttribute('data-front','');
@@ -320,7 +382,7 @@
       state.rows = parsed.data.map((arr) => ({ id: uid(), cols: arr, colA: arr[0]||'', colB: arr[1]||'' }));
     }
     state.selectedIds = new Set(state.rows.slice(0,1).map(r=>r.id));
-    renderGrid(); renderPreview();
+    renderGrid(); renderPreview(); saveState();
   }
 
   function loadXlsx(arrayBuffer) {
@@ -331,7 +393,7 @@
     setColumnsFromHeaders(headers.map(h=>String(h)));
     state.rows = json.map((arr) => ({ id: uid(), cols: arr, colA: arr[state.settings.colAKey]||'', colB: arr[state.settings.colBKey]||'' }));
     state.selectedIds = new Set(state.rows.slice(0,1).map(r=>r.id));
-    renderGrid(); renderPreview();
+    renderGrid(); renderPreview(); saveState();
   }
 
   function exportSelectedRows() {
@@ -483,6 +545,7 @@
     newOnes.forEach(n => state.selectedIds.add(n.id));
     renderGrid();
     renderPreview();
+    saveState();
   }
 
   function deleteSelectedRows() {
@@ -490,7 +553,7 @@
     pushHistory();
     state.rows = state.rows.filter(r => !state.selectedIds.has(r.id));
     state.selectedIds.clear();
-    renderGrid(); renderPreview();
+    renderGrid(); renderPreview(); saveState();
   }
 
   function remapFromCols() {
@@ -507,6 +570,11 @@
     pushHistory();
     state.rows.push({ id: uid(), colA: '', colB: '' });
     renderGrid();
+    // Auto-select the newly added row for quicker preview feedback
+    const last = state.rows[state.rows.length - 1];
+    state.selectedIds = new Set([last.id]);
+    renderPreview();
+    saveState();
   });
 
   els.duplicateRows && els.duplicateRows.addEventListener('click', duplicateSelectedRows);
@@ -533,10 +601,10 @@
     state.settings.align = cycle[(idx + 1) % cycle.length];
     renderPreview();
   });
-  els.fontPx && els.fontPx.addEventListener('input', () => { state.settings.fontPx = parseInt(els.fontPx.value,10)||DEFAULT_FONT_PX; renderPreview(); });
-  els.bgColor && els.bgColor.addEventListener('input', () => { state.settings.bgColor = els.bgColor.value; renderPreview(); });
-  els.borderEnabled && els.borderEnabled.addEventListener('change', () => { state.settings.borderEnabled = !!els.borderEnabled.checked; renderPreview(); });
-  els.borderColor && els.borderColor.addEventListener('input', () => { state.settings.borderColor = els.borderColor.value; renderPreview(); });
+  els.fontPx && els.fontPx.addEventListener('input', () => { state.settings.fontPx = parseInt(els.fontPx.value,10)||DEFAULT_FONT_PX; renderPreview(); saveState(); });
+  els.bgColor && els.bgColor.addEventListener('input', () => { state.settings.bgColor = els.bgColor.value; renderPreview(); saveState(); });
+  els.borderEnabled && els.borderEnabled.addEventListener('change', () => { state.settings.borderEnabled = !!els.borderEnabled.checked; renderPreview(); saveState(); });
+  els.borderColor && els.borderColor.addEventListener('input', () => { state.settings.borderColor = els.borderColor.value; renderPreview(); saveState(); });
 
   // Backgrounds
   function readFileAsDataUrl(file) {
@@ -552,24 +620,24 @@
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     state.settings.bgFrontDataUrl = String(await readFileAsDataUrl(file));
-    renderPreview();
+    renderPreview(); saveState();
   });
   els.bgBack && els.bgBack.addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     state.settings.bgBackDataUrl = String(await readFileAsDataUrl(file));
-    renderPreview();
+    renderPreview(); saveState();
   });
-  els.bgFrontClear && els.bgFrontClear.addEventListener('click', () => { state.settings.bgFrontDataUrl = null; renderPreview(); });
-  els.bgBackClear && els.bgBackClear.addEventListener('click', () => { state.settings.bgBackDataUrl = null; renderPreview(); });
-  els.bgMode && els.bgMode.addEventListener('change', () => { state.settings.bgMode = els.bgMode.value; renderPreview(); });
+  els.bgFrontClear && els.bgFrontClear.addEventListener('click', () => { state.settings.bgFrontDataUrl = null; renderPreview(); saveState(); });
+  els.bgBackClear && els.bgBackClear.addEventListener('click', () => { state.settings.bgBackDataUrl = null; renderPreview(); saveState(); });
+  els.bgMode && els.bgMode.addEventListener('change', () => { state.settings.bgMode = els.bgMode.value; renderPreview(); saveState(); });
 
   // Export controls
-  els.exportFormat && els.exportFormat.addEventListener('change', () => { state.settings.exportFormat = els.exportFormat.value; });
-  els.exportSide && els.exportSide.addEventListener('change', () => { state.settings.exportSide = els.exportSide.value; });
-  els.cardsPerPage && els.cardsPerPage.addEventListener('change', () => { state.settings.cardsPerPage = parseInt(els.cardsPerPage.value,10)||1; });
-  els.paperSize && els.paperSize.addEventListener('change', () => { state.settings.paperSize = els.paperSize.value; });
-  els.filenameTpl && els.filenameTpl.addEventListener('input', () => { state.settings.filenameTpl = els.filenameTpl.value; });
+  els.exportFormat && els.exportFormat.addEventListener('change', () => { state.settings.exportFormat = els.exportFormat.value; saveState(); });
+  els.exportSide && els.exportSide.addEventListener('change', () => { state.settings.exportSide = els.exportSide.value; saveState(); });
+  els.cardsPerPage && els.cardsPerPage.addEventListener('change', () => { state.settings.cardsPerPage = parseInt(els.cardsPerPage.value,10)||1; saveState(); });
+  els.paperSize && els.paperSize.addEventListener('change', () => { state.settings.paperSize = els.paperSize.value; saveState(); });
+  els.filenameTpl && els.filenameTpl.addEventListener('input', () => { state.settings.filenameTpl = els.filenameTpl.value; saveState(); });
 
   // Download button
   els.downloadBtn && els.downloadBtn.addEventListener('click', async () => {
@@ -594,14 +662,18 @@
       pushHistory();
       loadXlsx(buf);
     } else {
-      alert('Nicht unterstütztes Format');
+      alert('Nicht unterstütztes Format. Erlaubt: CSV, XLSX, XLS, ODS');
     }
   });
 
-  // Initialize sample row
-  state.rows = [ { id: uid(), colA: 'Beispiel Vorderseite', colB: 'Beispiel Rückseite' } ];
-  state.selectedIds = new Set([state.rows[0].id]);
+  // Initialize from saved state if available, otherwise sample row
+  const restored = loadSavedState();
+  if (!restored) {
+    state.rows = [ { id: uid(), colA: 'Beispiel Vorderseite', colB: 'Beispiel Rückseite' } ];
+    state.selectedIds = new Set([state.rows[0].id]);
+  }
   setColumnsFromHeaders(["A","B"]);
+  syncControlsFromSettings();
   renderGrid();
   renderPreview();
 })();
