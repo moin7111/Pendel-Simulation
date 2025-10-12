@@ -37,6 +37,7 @@ input { width: 100%; background: #0b1220; color: var(--text); border: 1px solid 
 /* Flashcards preview spacing */
 .card-preview .card [data-front],
 .card-preview .card [data-back] {
-  border: 1px dashed rgba(148,163,184,.3);
+  border: 1px dashed rgba(148,163,184,.2);
+  background-clip: padding-box;
 }
 

@@ -1,6 +1,5 @@
 (function(){
-  const DEFAULT_FONT_FRONT_PX = 28;
-  const DEFAULT_FONT_BACK_PX = 24;
+  const DEFAULT_FONT_PX = 28;
 
   const state = {
     columns: ["A", "B"],
@@ -14,44 +13,30 @@
       draggingId: null,
     },
     settings: {
-      theme: "minimal",
-      font: "system-ui",
-      accent: "#2563eb",
+      // Core card metrics (fixed defaults)
       widthMm: 85,
       heightMm: 55,
       marginMm: 6,
-      align: "center",
+      // Text & style
+      align: 'center', // left | center | right
+      fontPx: DEFAULT_FONT_PX,
+      bgColor: '#ffffff',
+      borderEnabled: true,
+      borderColor: '#334155',
+      // Data mapping
       hasHeader: false,
       colAKey: 0,
       colBKey: 1,
-      // Export / layout
-      paper: "Card", // A4, Letter, Card (default Card = 1×1)
-      pdfCols: 2,
-      pdfRows: 3,
-      gapMm: 6,
-      pageMarginMm: 12,
-      flip: "long", // long | short
-      rotateBack: true,
-      cropMarks: false,
-      bleedMm: 0,
-      // Images
-      imgFormat: "png", // png | jpg
-      dpi: 300,
-      filenameTpl: "karte_{index}_{front}",
-      // Language
-      lang: "de",
+      // Export
+      exportFormat: 'pdf', // pdf | png | jpg
+      exportSide: 'both', // front | back | both
+      cardsPerPage: 4, // 1,2,4,6,8
+      paperSize: 'A4', // A4 | A6
+      filenameTpl: 'karte_{index}_{front}',
       // Backgrounds
       bgFrontDataUrl: null,
       bgBackDataUrl: null,
       bgMode: 'cover', // cover | contain
-      // Text position & sizing
-      posH: 'center', // left | center | right
-      posV: 'center', // top | center | bottom
-      offsetXmm: 0,
-      offsetYmm: 0,
-      sizeAuto: true,
-      fontFrontPx: DEFAULT_FONT_FRONT_PX,
-      fontBackPx: DEFAULT_FONT_BACK_PX,
     }
   };
 
@@ -69,13 +54,12 @@
     hasHeader: document.getElementById('hasHeader'),
     colA: document.getElementById('colA'),
     colB: document.getElementById('colB'),
-    theme: document.getElementById('theme'),
-    font: document.getElementById('font'),
-    accent: document.getElementById('accent'),
-    wmm: document.getElementById('wmm'),
-    hmm: document.getElementById('hmm'),
-    marginmm: document.getElementById('marginmm'),
-    align: document.getElementById('align'),
+    // style controls
+    alignToggle: document.getElementById('alignToggle'),
+    fontPx: document.getElementById('fontPx'),
+    bgColor: document.getElementById('bgColor'),
+    borderEnabled: document.getElementById('borderEnabled'),
+    borderColor: document.getElementById('borderColor'),
     previewFront: document.getElementById('previewFront'),
     previewBack: document.getElementById('previewBack'),
     // backgrounds & position
@@ -84,33 +68,13 @@
     bgFrontClear: document.getElementById('bgFrontClear'),
     bgBackClear: document.getElementById('bgBackClear'),
     bgMode: document.getElementById('bgMode'),
-    posH: document.getElementById('posH'),
-    posV: document.getElementById('posV'),
-    offsetXmm: document.getElementById('offsetXmm'),
-    offsetYmm: document.getElementById('offsetYmm'),
-    sizeAuto: document.getElementById('sizeAuto'),
-    fontFrontPx: document.getElementById('fontFrontPx'),
-    fontBackPx: document.getElementById('fontBackPx'),
-    // nav buttons
-    exportPdfBoth: document.getElementById('exportPdfBoth'),
-    exportPdfFront: document.getElementById('exportPdfFront'),
-    exportPdfBack: document.getElementById('exportPdfBack'),
-    exportImages: document.getElementById('exportImages'),
-    samplePdf: document.getElementById('samplePdf'),
     // export controls
-    paper: document.getElementById('paper'),
-    pdfCols: document.getElementById('pdfCols'),
-    pdfRows: document.getElementById('pdfRows'),
-    gapmm: document.getElementById('gapmm'),
-    pagemm: document.getElementById('pagemm'),
-    flip: document.getElementById('flip'),
-    rotateBack: document.getElementById('rotateBack'),
-    cropMarks: document.getElementById('cropMarks'),
-    bleedmm: document.getElementById('bleedmm'),
-    imgFormat: document.getElementById('imgFormat'),
-    dpi: document.getElementById('dpi'),
+    exportFormat: document.getElementById('exportFormat'),
+    exportSide: document.getElementById('exportSide'),
+    cardsPerPage: document.getElementById('cardsPerPage'),
+    paperSize: document.getElementById('paperSize'),
+    downloadBtn: document.getElementById('downloadBtn'),
     filenameTpl: document.getElementById('filenameTpl'),
-    lang: document.getElementById('lang'),
   };
 
   const uid = (()=>{ let n=1; return ()=>n++; })();
@@ -243,36 +207,17 @@
   }
 
   function applyThemeToCard(cardEl) {
-    const { theme, font, accent, align } = state.settings;
+    const { align, bgColor, borderEnabled, borderColor } = state.settings;
     const front = cardEl.querySelector('[data-front]');
     const back = cardEl.querySelector('[data-back]');
-    const styleCommon = `font-family:${font}; text-align:${align};`;
-    const baseCss = `border-radius:8px; border:1px solid #334155; padding:12px; display:grid; place-items:center;`;
-    if (theme === 'light') {
-      cardEl.style.background = '#ffffff';
-      cardEl.style.color = '#0b1220';
-      cardEl.style.boxShadow = '0 2px 8px rgba(0,0,0,.08)';
-      front.style.cssText = styleCommon + baseCss;
-      back.style.cssText = styleCommon + baseCss;
-    } else if (theme === 'dark') {
-      cardEl.style.background = '#0b1220';
-      cardEl.style.color = '#e5e7eb';
-      cardEl.style.boxShadow = '0 2px 8px rgba(0,0,0,.3)';
-      front.style.cssText = styleCommon + baseCss;
-      back.style.cssText = styleCommon + baseCss;
-    } else if (theme === 'card') {
-      cardEl.style.background = '#fff';
-      cardEl.style.color = '#111827';
-      cardEl.style.boxShadow = '0 4px 16px rgba(0,0,0,.1)';
-      front.style.cssText = styleCommon + baseCss + `border-top:4px solid ${accent};`;
-      back.style.cssText = styleCommon + baseCss + `border-bottom:4px solid ${accent};`;
-    } else {
-      cardEl.style.background = '#0b1220';
-      cardEl.style.color = '#e5e7eb';
-      cardEl.style.boxShadow = 'none';
-      front.style.cssText = styleCommon + baseCss + 'border:none;';
-      back.style.cssText = styleCommon + baseCss + 'border:none;';
-    }
+    const styleCommon = `text-align:${align};`;
+    const radius = '10px';
+    const borderCss = borderEnabled ? `border:1px solid ${borderColor};` : 'border: none;';
+    cardEl.style.background = bgColor || '#ffffff';
+    cardEl.style.color = '#0b1220';
+    cardEl.style.boxShadow = '0 2px 8px rgba(0,0,0,.08)';
+    front.style.cssText = styleCommon + `border-radius:${radius}; ${borderCss} padding:12px; display:grid; place-items:center;`;
+    back.style.cssText = styleCommon + `border-radius:${radius}; ${borderCss} padding:12px; display:grid; place-items:center;`;
   }
 
   function autoFontSizeFor(text, basePx) {
@@ -285,52 +230,40 @@
     return basePx;
   }
 
-  function computeJustify(posH) {
-    if (posH === 'left') return 'flex-start';
-    if (posH === 'right') return 'flex-end';
-    return 'center';
-  }
-
-  function computeAlign(posV) {
-    if (posV === 'top') return 'flex-start';
-    if (posV === 'bottom') return 'flex-end';
-    return 'center';
-  }
+  // Content is centered; text alignment is handled via text-align
 
   function applySideStyles(sideEl, text, side) {
-    const { marginMm, align, bgFrontDataUrl, bgBackDataUrl, bgMode, posH, posV, offsetXmm, offsetYmm, sizeAuto, fontFrontPx, fontBackPx } = state.settings;
+    const { marginMm, align, bgFrontDataUrl, bgBackDataUrl, bgMode, fontPx, bgColor } = state.settings;
     const innerW = mmToPxDom(state.settings.widthMm) - mmToPxDom(marginMm) * 2;
     const innerH = mmToPxDom(state.settings.heightMm) - mmToPxDom(marginMm) * 2;
     sideEl.innerHTML = '';
     sideEl.style.width = `${innerW}px`;
     sideEl.style.height = `${innerH}px`;
     sideEl.style.display = 'flex';
-    sideEl.style.justifyContent = computeJustify(posH);
-    sideEl.style.alignItems = computeAlign(posV);
+    sideEl.style.justifyContent = 'center';
+    sideEl.style.alignItems = 'center';
     sideEl.style.backgroundImage = '';
     sideEl.style.backgroundRepeat = 'no-repeat';
     sideEl.style.backgroundPosition = 'center';
     sideEl.style.backgroundSize = bgMode === 'contain' ? 'contain' : 'cover';
     // background per side
     const bgUrl = side === 'front' ? bgFrontDataUrl : bgBackDataUrl;
-    if (bgUrl) sideEl.style.backgroundImage = `url(${bgUrl})`;
+    if (bgUrl) {
+      sideEl.style.backgroundImage = `url(${bgUrl})`;
+      sideEl.style.backgroundColor = 'transparent';
+    } else {
+      sideEl.style.backgroundColor = bgColor || '#ffffff';
+    }
 
     // inner span for text & offset
     const span = document.createElement('span');
     span.textContent = text || '';
     span.style.display = 'inline-block';
-    const offX = mmToPxDom(offsetXmm);
-    const offY = mmToPxDom(offsetYmm);
-    span.style.transform = `translate(${offX}px, ${offY}px)`;
     span.style.textAlign = align;
 
-    // font size
-    if (sizeAuto) {
-      const base = side === 'front' ? DEFAULT_FONT_FRONT_PX : DEFAULT_FONT_BACK_PX;
-      span.style.fontSize = `${autoFontSizeFor(span.textContent, base)}px`;
-    } else {
-      span.style.fontSize = `${side === 'front' ? (parseInt(fontFrontPx,10)||DEFAULT_FONT_FRONT_PX) : (parseInt(fontBackPx,10)||DEFAULT_FONT_BACK_PX)}px`;
-    }
+    // font size (single control)
+    const base = parseInt(fontPx, 10) || DEFAULT_FONT_PX;
+    span.style.fontSize = `${autoFontSizeFor(span.textContent, base)}px`;
 
     sideEl.appendChild(span);
   }
@@ -423,9 +356,9 @@
     return { wrapper, card, f, b };
   }
 
-  async function renderCardSideCanvas(text, side, scalePx = 2, includeBleed = 0) {
-    const totalW = state.settings.widthMm + includeBleed * 2;
-    const totalH = state.settings.heightMm + includeBleed * 2;
+  async function renderCardSideCanvas(text, side, scalePx = 2) {
+    const totalW = state.settings.widthMm;
+    const totalH = state.settings.heightMm;
     const { wrapper, card, f, b } = buildCardDom(side === 'front' ? text : '', side === 'back' ? text : '', totalW, totalH);
     // Hide unused side to prevent layout shifts
     if (side === 'front') {
@@ -440,59 +373,66 @@
   }
 
   function getPaperSizeMm() {
-    if (state.settings.paper === 'A4') return { w: 210, h: 297 };
-    if (state.settings.paper === 'Letter') return { w: 216, h: 279 };
-    // Card size
-    return { w: state.settings.widthMm + state.settings.bleedMm * 2, h: state.settings.heightMm + state.settings.bleedMm * 2 };
+    if (state.settings.paperSize === 'A6') return { w: 105, h: 148 };
+    return { w: 210, h: 297 }; // A4 default
   }
 
-  function drawCropMarks(pdf, x, y, w, h) {
-    const mark = 3; // mm
-    pdf.setDrawColor(120);
-    pdf.setLineWidth(0.2);
-    // Top-left
-    pdf.line(x - mark, y, x, y);
-    pdf.line(x, y - mark, x, y);
-    // Top-right
-    pdf.line(x + w + mark, y, x + w, y);
-    pdf.line(x + w, y - mark, x + w, y);
-    // Bottom-left
-    pdf.line(x - mark, y + h, x, y + h);
-    pdf.line(x, y + h + mark, x, y + h);
-    // Bottom-right
-    pdf.line(x + w + mark, y + h, x + w, y + h);
-    pdf.line(x + w, y + h + mark, x + w, y + h);
-  }
+  // Crop marks removed per simplified export
 
-  async function exportPdf(sideMode) {
+  async function exportPdfGrid(sideMode) {
     const rows = exportSelectedRows();
     if (!rows.length) return;
     const { jsPDF } = window.jspdf;
 
-    // Always one card per page
-    const bleed = state.settings.bleedMm;
-    const cardW = state.settings.widthMm + bleed * 2;
-    const cardH = state.settings.heightMm + bleed * 2;
-    const pdf = new jsPDF({ unit: 'mm', format: [cardW, cardH] });
+    const paper = getPaperSizeMm();
+    const pdf = new jsPDF({ unit: 'mm', format: state.settings.paperSize.toLowerCase() });
 
-    let isFirstPage = true;
-    for (const r of rows) {
-      if (!isFirstPage) pdf.addPage();
-      isFirstPage = false;
-      if (sideMode === 'front' || sideMode === 'both') {
-        const c1 = await renderCardSideCanvas(r.colA || '', 'front', 2, bleed);
-        pdf.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH);
-        if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
+    const perPage = parseInt(state.settings.cardsPerPage, 10) || 1;
+    const gridMap = { 1: [1,1], 2: [2,1], 4:[2,2], 6:[3,2], 8:[4,2] };
+    const [cols, rowsPerPage] = gridMap[perPage] || [1,1];
+
+    const pageMarginMm = 12;
+    const gapMm = 6;
+
+    const availW = paper.w - pageMarginMm * 2 - gapMm * (cols - 1);
+    const availH = paper.h - pageMarginMm * 2 - gapMm * (rowsPerPage - 1);
+    const cellW = availW / cols;
+    const cellH = availH / rowsPerPage;
+
+    const baseW = state.settings.widthMm;
+    const baseH = state.settings.heightMm;
+    const scale = Math.min(cellW / baseW, cellH / baseH);
+    const drawW = baseW * scale;
+    const drawH = baseH * scale;
+
+    const placeSidePages = async (pick) => {
+      let pageIndex = 0;
+      while (pageIndex * perPage < rows.length) {
+        if (pageIndex > 0) pdf.addPage();
+        for (let rIndex = 0; rIndex < perPage; rIndex++) {
+          const itemIndex = pageIndex * perPage + rIndex;
+          if (itemIndex >= rows.length) break;
+          const r = rows[itemIndex];
+          const side = pick === 'front' ? 'front' : 'back';
+          const text = side === 'front' ? (r.colA || '') : (r.colB || '');
+          const canvas = await renderCardSideCanvas(text, side, 2);
+          const col = rIndex % cols;
+          const row = Math.floor(rIndex / cols);
+          const x = pageMarginMm + col * (cellW + gapMm) + (cellW - drawW) / 2;
+          const y = pageMarginMm + row * (cellH + gapMm) + (cellH - drawH) / 2;
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, drawW, drawH);
+        }
+        pageIndex++;
       }
-      if (sideMode === 'both') {
-        pdf.addPage();
-      }
-      if (sideMode === 'back' || sideMode === 'both') {
-        const c2 = await renderCardSideCanvas(r.colB || '', 'back', 2, bleed);
-        const rot = state.settings.rotateBack ? 180 : 0;
-        pdf.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, cardW, cardH, undefined, 'FAST', rot);
-        if (state.settings.cropMarks) drawCropMarks(pdf, 0, 0, cardW, cardH);
-      }
+    };
+
+    if (sideMode === 'front') {
+      await placeSidePages('front');
+    } else if (sideMode === 'back') {
+      await placeSidePages('back');
+    } else {
+      await placeSidePages('front');
+      await placeSidePages('back');
     }
 
     const fileSuffix = sideMode === 'both' ? 'front_back' : sideMode;
@@ -503,21 +443,25 @@
     const selected = exportSelectedRows();
     if (!selected.length) return;
     const zip = new JSZip();
-    const bleed = state.settings.bleedMm;
-    const format = state.settings.imgFormat === 'jpg' ? 'image/jpeg' : 'image/png';
-    const dpi = Math.max(72, parseInt(state.settings.dpi, 10) || 300);
+    const sideMode = state.settings.exportSide;
+    const format = state.settings.exportFormat === 'jpg' ? 'image/jpeg' : 'image/png';
+    const dpi = 300; // fixed DPI
     const scale = dpi / 96; // html2canvas scale vs CSS px assumption
 
     let index = 1;
     for (const r of selected) {
-      const front = await renderCardSideCanvas(r.colA || '', 'front', scale, bleed);
-      const back = await renderCardSideCanvas(r.colB || '', 'back', scale, bleed);
-      const frontData = front.toDataURL(format);
-      const backData = back.toDataURL(format);
       const base = filenameFromTemplate(r, index);
-      const ext = state.settings.imgFormat === 'jpg' ? 'jpg' : 'png';
-      zip.file(`${base}_front.${ext}`, frontData.split(',')[1], { base64: true });
-      zip.file(`${base}_back.${ext}`, backData.split(',')[1], { base64: true });
+      const ext = state.settings.exportFormat === 'jpg' ? 'jpg' : 'png';
+      if (sideMode === 'front' || sideMode === 'both') {
+        const front = await renderCardSideCanvas(r.colA || '', 'front', scale);
+        const frontData = front.toDataURL(format);
+        zip.file(`${base}_front.${ext}`, frontData.split(',')[1], { base64: true });
+      }
+      if (sideMode === 'back' || sideMode === 'both') {
+        const back = await renderCardSideCanvas(r.colB || '', 'back', scale);
+        const backData = back.toDataURL(format);
+        zip.file(`${base}_back.${ext}`, backData.split(',')[1], { base64: true });
+      }
       index++;
     }
     const blob = await zip.generateAsync({ type: 'blob' });
@@ -581,15 +525,20 @@
 
   els.colA.addEventListener('change', () => { state.settings.colAKey = parseInt(els.colA.value,10); remapFromCols(); renderGrid(); renderPreview(); });
   els.colB.addEventListener('change', () => { state.settings.colBKey = parseInt(els.colB.value,10); remapFromCols(); renderGrid(); renderPreview(); });
-  els.theme.addEventListener('change', () => { state.settings.theme = els.theme.value; renderPreview(); });
-  els.font.addEventListener('change', () => { state.settings.font = els.font.value; renderPreview(); });
-  els.accent.addEventListener('input', () => { state.settings.accent = els.accent.value; renderPreview(); });
-  els.wmm.addEventListener('input', () => { state.settings.widthMm = parseFloat(els.wmm.value)||85; renderPreview(); });
-  els.hmm.addEventListener('input', () => { state.settings.heightMm = parseFloat(els.hmm.value)||55; renderPreview(); });
-  els.marginmm.addEventListener('input', () => { state.settings.marginMm = parseFloat(els.marginmm.value)||6; renderPreview(); });
-  els.align.addEventListener('change', () => { state.settings.align = els.align.value; renderPreview(); });
 
-  // Backgrounds & positioning
+  // Style controls
+  els.alignToggle && els.alignToggle.addEventListener('click', () => {
+    const cycle = ['center','left','right'];
+    const idx = cycle.indexOf(state.settings.align);
+    state.settings.align = cycle[(idx + 1) % cycle.length];
+    renderPreview();
+  });
+  els.fontPx && els.fontPx.addEventListener('input', () => { state.settings.fontPx = parseInt(els.fontPx.value,10)||DEFAULT_FONT_PX; renderPreview(); });
+  els.bgColor && els.bgColor.addEventListener('input', () => { state.settings.bgColor = els.bgColor.value; renderPreview(); });
+  els.borderEnabled && els.borderEnabled.addEventListener('change', () => { state.settings.borderEnabled = !!els.borderEnabled.checked; renderPreview(); });
+  els.borderColor && els.borderColor.addEventListener('input', () => { state.settings.borderColor = els.borderColor.value; renderPreview(); });
+
+  // Backgrounds
   function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -614,59 +563,22 @@
   els.bgFrontClear && els.bgFrontClear.addEventListener('click', () => { state.settings.bgFrontDataUrl = null; renderPreview(); });
   els.bgBackClear && els.bgBackClear.addEventListener('click', () => { state.settings.bgBackDataUrl = null; renderPreview(); });
   els.bgMode && els.bgMode.addEventListener('change', () => { state.settings.bgMode = els.bgMode.value; renderPreview(); });
-  els.posH && els.posH.addEventListener('change', () => { state.settings.posH = els.posH.value; renderPreview(); });
-  els.posV && els.posV.addEventListener('change', () => { state.settings.posV = els.posV.value; renderPreview(); });
-  els.offsetXmm && els.offsetXmm.addEventListener('input', () => { state.settings.offsetXmm = parseFloat(els.offsetXmm.value)||0; renderPreview(); });
-  els.offsetYmm && els.offsetYmm.addEventListener('input', () => { state.settings.offsetYmm = parseFloat(els.offsetYmm.value)||0; renderPreview(); });
-  els.sizeAuto && els.sizeAuto.addEventListener('change', () => {
-    state.settings.sizeAuto = !!els.sizeAuto.checked;
-    if (state.settings.sizeAuto) {
-      els.fontFrontPx && (els.fontFrontPx.disabled = true);
-      els.fontBackPx && (els.fontBackPx.disabled = true);
-    } else {
-      els.fontFrontPx && (els.fontFrontPx.disabled = false);
-      els.fontBackPx && (els.fontBackPx.disabled = false);
-    }
-    renderPreview();
-  });
-  els.fontFrontPx && els.fontFrontPx.addEventListener('input', () => { state.settings.fontFrontPx = parseInt(els.fontFrontPx.value,10)||DEFAULT_FONT_FRONT_PX; renderPreview(); });
-  els.fontBackPx && els.fontBackPx.addEventListener('input', () => { state.settings.fontBackPx = parseInt(els.fontBackPx.value,10)||DEFAULT_FONT_BACK_PX; renderPreview(); });
 
   // Export controls
-  els.paper && els.paper.addEventListener('change', () => { state.settings.paper = els.paper.value; });
-  els.pdfCols && els.pdfCols.addEventListener('input', () => { state.settings.pdfCols = parseInt(els.pdfCols.value, 10) || 1; });
-  els.pdfRows && els.pdfRows.addEventListener('input', () => { state.settings.pdfRows = parseInt(els.pdfRows.value, 10) || 1; });
-  els.gapmm && els.gapmm.addEventListener('input', () => { state.settings.gapMm = parseFloat(els.gapmm.value)||0; });
-  els.pagemm && els.pagemm.addEventListener('input', () => { state.settings.pageMarginMm = parseFloat(els.pagemm.value)||0; });
-  els.flip && els.flip.addEventListener('change', () => { state.settings.flip = els.flip.value; });
-  els.rotateBack && els.rotateBack.addEventListener('change', () => { state.settings.rotateBack = !!els.rotateBack.checked; });
-  els.cropMarks && els.cropMarks.addEventListener('change', () => { state.settings.cropMarks = !!els.cropMarks.checked; });
-  els.bleedmm && els.bleedmm.addEventListener('input', () => { state.settings.bleedMm = parseFloat(els.bleedmm.value)||0; });
-  els.imgFormat && els.imgFormat.addEventListener('change', () => { state.settings.imgFormat = els.imgFormat.value; });
-  els.dpi && els.dpi.addEventListener('input', () => { state.settings.dpi = parseInt(els.dpi.value,10)||300; });
+  els.exportFormat && els.exportFormat.addEventListener('change', () => { state.settings.exportFormat = els.exportFormat.value; });
+  els.exportSide && els.exportSide.addEventListener('change', () => { state.settings.exportSide = els.exportSide.value; });
+  els.cardsPerPage && els.cardsPerPage.addEventListener('change', () => { state.settings.cardsPerPage = parseInt(els.cardsPerPage.value,10)||1; });
+  els.paperSize && els.paperSize.addEventListener('change', () => { state.settings.paperSize = els.paperSize.value; });
   els.filenameTpl && els.filenameTpl.addEventListener('input', () => { state.settings.filenameTpl = els.filenameTpl.value; });
-  els.lang && els.lang.addEventListener('change', () => { state.settings.lang = els.lang.value; /* UI text could be updated here */ });
 
-  // Export buttons
-  els.exportPdfBoth && els.exportPdfBoth.addEventListener('click', () => exportPdf('both'));
-  els.exportPdfFront && els.exportPdfFront.addEventListener('click', () => exportPdf('front'));
-  els.exportPdfBack && els.exportPdfBack.addEventListener('click', () => exportPdf('back'));
-  els.exportImages && els.exportImages.addEventListener('click', exportImagesZip);
-  els.samplePdf && els.samplePdf.addEventListener('click', async () => {
-    if (!state.rows.length) {
-      state.rows = [
-        { id: uid(), colA: 'Front 1', colB: 'Back 1' },
-        { id: uid(), colA: 'Front 2', colB: 'Back 2' },
-        { id: uid(), colA: 'Front 3', colB: 'Back 3' },
-        { id: uid(), colA: 'Front 4', colB: 'Back 4' },
-        { id: uid(), colA: 'Front 5', colB: 'Back 5' },
-        { id: uid(), colA: 'Front 6', colB: 'Back 6' },
-      ];
-      state.selectedIds = new Set(state.rows.map(r=>r.id));
-      renderGrid();
-      renderPreview();
+  // Download button
+  els.downloadBtn && els.downloadBtn.addEventListener('click', async () => {
+    const side = state.settings.exportSide;
+    if (state.settings.exportFormat === 'pdf') {
+      await exportPdfGrid(side);
+    } else {
+      await exportImagesZip();
     }
-    exportPdf('both');
   });
 
   els.fileInput.addEventListener('change', async (ev) => {
