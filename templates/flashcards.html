@@ -209,6 +209,34 @@
                     </select>
                   </label>
                 </div>
+                
+                <div class="row">
+                  <label class="muted">Seitenrand (mm)
+                    <input id="pageMarginMm" type="number" value="12" step="1" min="0" max="30" />
+                  </label>
+                  <label class="muted">Gutter (mm)
+                    <input id="gapMm" type="number" value="6" step="1" min="0" max="30" />
+                  </label>
+                </div>
+                <div class="row">
+                  <label class="muted">Back Offset X (mm)
+                    <input id="backOffsetXMm" type="number" value="0" step="0.5" min="-5" max="5" />
+                  </label>
+                  <label class="muted">Back Offset Y (mm)
+                    <input id="backOffsetYMm" type="number" value="0" step="0.5" min="-5" max="5" />
+                  </label>
+                </div>
+                <div class="row">
+                  <label class="muted" title="Schnittmarken anzeigen">Schnittmarken
+                    <input id="showMarks" type="checkbox" checked />
+                  </label>
+                  <label class="muted" title="Nur für PNG/JPG relevant">Bildmodus
+                    <select id="imageExportMode">
+                      <option value="pages" selected>Seiten (Front/Back)</option>
+                      <option value="cards">Einzelkarten</option>
+                    </select>
+                  </label>
+                </div>
               </div>
 
               <div class="field">
