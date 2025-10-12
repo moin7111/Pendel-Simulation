@@ -32,29 +32,24 @@
       <h1>Kartei‑Karten Generator</h1>
       <nav>
         <a href="/" class="btn">Hub</a>
-        <button id="exportPdfBoth" class="btn primary">PDF Front+Back</button>
-        <button id="exportPdfFront" class="btn">PDF Front</button>
-        <button id="exportPdfBack" class="btn">PDF Back</button>
-        <button id="exportImages" class="btn">Bilder ZIP</button>
-        <button id="samplePdf" class="btn">Sample PDF</button>
       </nav>
     </header>
 
     <main class="layout">
       <section class="panel">
         <div class="toolbar">
-          <label class="btn" style="position: relative; overflow: hidden;">
-            Datei laden
+          <label class="btn" style="position: relative; overflow: hidden;" title="Datei laden">
+            📂
             <input id="fileInput" type="file" accept=".csv,.xlsx,.xls,.ods" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
           </label>
-          <button id="addRow" class="btn">Zeile hinzufügen</button>
-          <button id="duplicateRows" class="btn">Ausgewählte duplizieren</button>
-          <button id="deleteRows" class="btn">Ausgewählte löschen</button>
+          <button id="addRow" class="btn" title="Zeile hinzufügen">➕</button>
+          <button id="duplicateRows" class="btn" title="Ausgewählte duplizieren">⎘</button>
+          <button id="deleteRows" class="btn" title="Ausgewählte löschen">🗑️</button>
           <label class="row muted"><input id="hasHeader" type="checkbox" /> Erste Zeile ist Header</label>
           <span id="rowCount" class="muted">0 Zeilen</span>
           <span id="validation" class="muted"></span>
-          <button id="undo" class="btn">Undo</button>
-          <button id="redo" class="btn">Redo</button>
+          <button id="undo" class="btn" title="Rückgängig">↶</button>
+          <button id="redo" class="btn" title="Wiederholen">↷</button>
         </div>
 
         <table class="grid" id="dataGrid" aria-label="Tabellenansicht">
@@ -72,15 +67,6 @@
 
       <aside class="panel">
         <div class="field">
-          <label>Sprache / Language</label>
-          <div class="row">
-            <select id="lang">
-              <option value="de" selected>Deutsch</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
           <label>Spaltenzuordnung</label>
           <div class="row">
             <span class="muted">Vorderseite:</span>
@@ -89,40 +75,34 @@
             <select id="colB"></select>
           </div>
         </div>
+
         <div class="field">
-          <label>Design</label>
+          <label>Darstellung</label>
           <div class="row">
-            <select id="theme">
-              <option value="minimal">Minimal</option>
-              <option value="light">Hell</option>
-              <option value="dark">Dunkel</option>
-              <option value="card">Karteikarte</option>
-            </select>
-            <select id="font">
-              <option value="system-ui">System</option>
-              <option value="Inter, sans-serif">Inter</option>
-              <option value="Lora, serif">Lora</option>
-              <option value="Poppins, sans-serif">Poppins</option>
-            </select>
-            <input id="accent" type="color" value="#2563eb" title="Akzentfarbe" />
+            <button id="alignToggle" class="btn" title="Textausrichtung umschalten">⟺</button>
+            <label class="muted">Schriftgröße (px) <input id="fontPx" type="number" value="28" step="1" /></label>
+          </div>
+          <div class="row">
+            <label class="muted">Hintergrundfarbe <input id="bgColor" type="color" value="#ffffff" /></label>
+            <label class="muted">Rahmen <input id="borderEnabled" type="checkbox" checked /></label>
+            <label class="muted">Farbe <input id="borderColor" type="color" value="#334155" /></label>
           </div>
         </div>
-
         <div class="field">
           <label>Hintergründe</label>
           <div class="row">
-            <label class="btn" style="position: relative; overflow: hidden;">
-              Vorderseite Bild
+            <label class="btn" style="position: relative; overflow: hidden;" title="Vorderseite Bild">
+              🖼️ Front
               <input id="bgFront" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
             </label>
-            <button id="bgFrontClear" class="btn">Entfernen</button>
+            <button id="bgFrontClear" class="btn" title="Front entfernen">✖</button>
           </div>
           <div class="row">
-            <label class="btn" style="position: relative; overflow: hidden;">
-              Rückseite Bild
+            <label class="btn" style="position: relative; overflow: hidden;" title="Rückseite Bild">
+              🖼️ Back
               <input id="bgBack" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
             </label>
-            <button id="bgBackClear" class="btn">Entfernen</button>
+            <button id="bgBackClear" class="btn" title="Back entfernen">✖</button>
           </div>
           <div class="row">
             <span class="muted">Bildanpassung:</span>
@@ -132,94 +112,42 @@
             </select>
           </div>
         </div>
-        <div class="field">
-          <label>Größe & Ausrichtung</label>
-          <div class="row">
-            <label class="muted">Breite (mm) <input id="wmm" type="number" value="85" step="1" /></label>
-            <label class="muted">Höhe (mm) <input id="hmm" type="number" value="55" step="1" /></label>
-            <label class="muted">Ränder (mm) <input id="marginmm" type="number" value="6" step="1" /></label>
-          </div>
-        </div>
-        <div class="field">
-          <label>Textausrichtung</label>
-          <div class="row">
-            <select id="align">
-              <option value="center">Zentriert</option>
-              <option value="left">Links</option>
-              <option value="right">Rechts</option>
-            </select>
-          </div>
-        </div>
 
         <div class="field">
-          <label>Textposition & Größe</label>
-          <div class="row">
-            <span class="muted">Position:</span>
-            <select id="posH">
-              <option value="left">Links</option>
-              <option value="center" selected>Zentriert</option>
-              <option value="right">Rechts</option>
-            </select>
-            <select id="posV">
-              <option value="top">Oben</option>
-              <option value="center" selected>Mittig</option>
-              <option value="bottom">Unten</option>
-            </select>
-          </div>
-          <div class="row">
-            <span class="muted">Versatz (mm):</span>
-            <label class="muted">X <input id="offsetXmm" type="number" value="0" step="1" /></label>
-            <label class="muted">Y <input id="offsetYmm" type="number" value="0" step="1" /></label>
-          </div>
-          <div class="row">
-            <label class="row muted"><input id="sizeAuto" type="checkbox" checked /> Automatische Größe</label>
-            <label class="muted">Front px <input id="fontFrontPx" type="number" value="28" step="1" disabled /></label>
-            <label class="muted">Back px <input id="fontBackPx" type="number" value="24" step="1" disabled /></label>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>PDF Export</label>
-          <div class="row">
-            <label class="muted">Papier
-              <select id="paper">
-                <option value="A4">A4 (210×297)</option>
-                <option value="Letter">Letter (216×279)</option>
-                <option value="Card" selected>Karte = 1×1</option>
-              </select>
-            </label>
-            <label class="muted">Spalten <input id="pdfCols" type="number" min="1" value="2" /></label>
-            <label class="muted">Zeilen <input id="pdfRows" type="number" min="1" value="3" /></label>
-          </div>
-          <div class="row">
-            <label class="muted">Abstand (mm) <input id="gapmm" type="number" value="6" step="1" /></label>
-            <label class="muted">Seitenrand (mm) <input id="pagemm" type="number" value="12" step="1" /></label>
-          </div>
-          <div class="row">
-            <label class="muted">Duplex
-              <select id="flip">
-                <option value="long">Flip long edge</option>
-                <option value="short">Flip short edge</option>
-              </select>
-            </label>
-            <label class="row muted"><input id="rotateBack" type="checkbox" checked /> Rücken 180° drehen</label>
-          </div>
-          <div class="row">
-            <label class="row muted"><input id="cropMarks" type="checkbox" /> Schnittmarken</label>
-            <label class="muted">Bleed (mm) <input id="bleedmm" type="number" value="0" step="0.5" /></label>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Bild Export</label>
+          <label>Export</label>
           <div class="row">
             <label class="muted">Format
-              <select id="imgFormat">
+              <select id="exportFormat">
+                <option value="pdf" selected>PDF</option>
                 <option value="png">PNG</option>
                 <option value="jpg">JPG</option>
               </select>
             </label>
-            <label class="muted">DPI <input id="dpi" type="number" value="300" step="10" /></label>
+            <label class="muted">Inhalt
+              <select id="exportSide">
+                <option value="front">Front</option>
+                <option value="back">Back</option>
+                <option value="both" selected>Front+Back</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label class="muted">Pro Seite
+              <select id="cardsPerPage">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="4" selected>4</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+            <label class="muted">Papier
+              <select id="paperSize">
+                <option value="A4" selected>A4</option>
+                <option value="A6">A6</option>
+              </select>
+            </label>
+            <button id="downloadBtn" class="btn primary">Herunterladen</button>
           </div>
         </div>
 
@@ -237,17 +165,7 @@
           </div>
         </div>
 
-        <div class="field">
-          <label>Duplex‑Druck Anleitung</label>
-          <details>
-            <summary class="muted">Tipps für korrektes beidseitiges Drucken</summary>
-            <div class="muted">
-              Wähle im Druckdialog Duplex und stelle „Flip on long/short edge“ passend ein. 
-              Aktiviere optional „Rücken 180° drehen“, wenn die Rückseiten auf dem Ausdruck auf dem Kopf stehen.
-              Für präzises Schneiden nutze Schnittmarken und ggf. einen kleinen Bleed.
-            </div>
-          </details>
-        </div>
+        
       </aside>
     </main>
 
