@@ -34,6 +34,15 @@
       cardsPerPage: 4, // 1,2,4,6,8
       paperSize: 'A4', // A4 | A6
       filenameTpl: 'karte_{index}_{front}',
+      // N-up / Print controls
+      flipEdge: 'long', // long | short
+      backRotation: 'auto', // auto | 0 | 180
+      pageMarginMm: 12,
+      gapMm: 6,
+      backOffsetXMm: 0,
+      backOffsetYMm: 0,
+      showMarks: true,
+      imageExportMode: 'pages', // pages | cards
       // Backgrounds
       bgFrontDataUrl: null,
       bgBackDataUrl: null,
@@ -74,6 +83,14 @@
     exportSide: document.getElementById('exportSide'),
     cardsPerPage: document.getElementById('cardsPerPage'),
     paperSize: document.getElementById('paperSize'),
+    flipEdge: document.getElementById('flipEdge'),
+    backRotation: document.getElementById('backRotation'),
+    pageMarginMm: document.getElementById('pageMarginMm'),
+    gapMm: document.getElementById('gapMm'),
+    backOffsetXMm: document.getElementById('backOffsetXMm'),
+    backOffsetYMm: document.getElementById('backOffsetYMm'),
+    showMarks: document.getElementById('showMarks'),
+    imageExportMode: document.getElementById('imageExportMode'),
     downloadBtn: document.getElementById('downloadBtn'),
     filenameTpl: document.getElementById('filenameTpl'),
     // Tabs and panels
@@ -120,6 +137,14 @@
     if (els.cardsPerPage) els.cardsPerPage.value = String(s.cardsPerPage);
     if (els.paperSize) els.paperSize.value = String(s.paperSize);
     if (els.filenameTpl) els.filenameTpl.value = String(s.filenameTpl);
+    if (els.flipEdge) els.flipEdge.value = String(s.flipEdge);
+    if (els.backRotation) els.backRotation.value = String(s.backRotation);
+    if (els.pageMarginMm) els.pageMarginMm.value = String(s.pageMarginMm);
+    if (els.gapMm) els.gapMm.value = String(s.gapMm);
+    if (els.backOffsetXMm) els.backOffsetXMm.value = String(s.backOffsetXMm);
+    if (els.backOffsetYMm) els.backOffsetYMm.value = String(s.backOffsetYMm);
+    if (els.showMarks) els.showMarks.checked = !!s.showMarks;
+    if (els.imageExportMode) els.imageExportMode.value = String(s.imageExportMode);
   }
 
   function loadSavedState() {
@@ -437,6 +462,70 @@
     return { wrapper, card, f, b };
   }
 
+  function computeBestGrid(perPage, paperWmm, paperHmm, marginMm, gapMm, cardWmm, cardHmm) {
+    // candidate grids for 1,2,4,6,8
+    const candidates = {
+      1: [[1,1],[1,1]],
+      2: [[2,1],[1,2]],
+      4: [[2,2]],
+      6: [[3,2],[2,3]],
+      8: [[4,2],[2,4]],
+    }[perPage] || [[1,1]];
+    let best = { cols: 1, rows: 1, drawW: cardWmm, drawH: cardHmm, scale: 1 };
+    for (const [cols, rows] of candidates) {
+      const availW = paperWmm - marginMm * 2 - gapMm * (cols - 1);
+      const availH = paperHmm - marginMm * 2 - gapMm * (rows - 1);
+      const cellW = availW / cols;
+      const cellH = availH / rows;
+      const scale = Math.min(cellW / cardWmm, cellH / cardHmm);
+      const drawW = cardWmm * scale;
+      const drawH = cardHmm * scale;
+      if (scale > best.scale) best = { cols, rows, drawW, drawH, scale };
+    }
+    return best;
+  }
+
+  function frontIndexToBackIndex(posIndex, cols, rows, flipEdge) {
+    const r = Math.floor(posIndex / cols);
+    const c = posIndex % cols;
+    if (flipEdge === 'long') {
+      // mirror horizontally (book flip)
+      const c2 = cols - c - 1;
+      return r * cols + c2;
+    } else {
+      // short edge: mirror vertically
+      const r2 = rows - r - 1;
+      return r2 * cols + c;
+    }
+  }
+
+  function effectiveBackRotation(paperLandscape, flipEdge, backRotationSetting) {
+    if (backRotationSetting !== 'auto') return parseInt(backRotationSetting,10) || 0;
+    // Heuristic: for portrait pages, long-edge flip needs 0°, short-edge needs 180°; swap for landscape
+    if (!paperLandscape) {
+      return flipEdge === 'long' ? 0 : 180;
+    } else {
+      return flipEdge === 'long' ? 180 : 0;
+    }
+  }
+
+  function drawCropMarks(pdf, x, y, w, h, markLen = 3, markOffset = 0.8) {
+    // simple tiny crop marks at corners
+    const l = markLen; const o = markOffset;
+    // top-left
+    pdf.line(x - o, y, x - o + l, y);
+    pdf.line(x, y - o, x, y - o + l);
+    // top-right
+    pdf.line(x + w + o, y, x + w + o - l, y);
+    pdf.line(x + w, y - o, x + w, y - o + l);
+    // bottom-left
+    pdf.line(x - o, y + h, x - o + l, y + h);
+    pdf.line(x, y + h + o, x, y + h + o - l);
+    // bottom-right
+    pdf.line(x + w + o, y + h, x + w + o - l, y + h);
+    pdf.line(x + w, y + h + o, x + w, y + h + o - l);
+  }
+
   async function renderCardSideCanvas(text, side, scalePx = 2) {
     const totalW = state.settings.widthMm;
     const totalH = state.settings.heightMm;
@@ -469,51 +558,68 @@
     const pdf = new jsPDF({ unit: 'mm', format: state.settings.paperSize.toLowerCase() });
 
     const perPage = parseInt(state.settings.cardsPerPage, 10) || 1;
-    const gridMap = { 1: [1,1], 2: [2,1], 4:[2,2], 6:[3,2], 8:[4,2] };
-    const [cols, rowsPerPage] = gridMap[perPage] || [1,1];
-
-    const pageMarginMm = 12;
-    const gapMm = 6;
-
-    const availW = paper.w - pageMarginMm * 2 - gapMm * (cols - 1);
-    const availH = paper.h - pageMarginMm * 2 - gapMm * (rowsPerPage - 1);
-    const cellW = availW / cols;
-    const cellH = availH / rowsPerPage;
-
+    const marginMm = parseFloat(state.settings.pageMarginMm) || 0;
+    const gapMm = parseFloat(state.settings.gapMm) || 0;
     const baseW = state.settings.widthMm;
     const baseH = state.settings.heightMm;
-    const scale = Math.min(cellW / baseW, cellH / baseH);
-    const drawW = baseW * scale;
-    const drawH = baseH * scale;
+    const { cols, rows: rowsPerPage, drawW, drawH } = computeBestGrid(
+      perPage, paper.w, paper.h, marginMm, gapMm, baseW, baseH
+    );
+    const cellW = (paper.w - marginMm * 2 - gapMm * (cols - 1)) / cols;
+    const cellH = (paper.h - marginMm * 2 - gapMm * (rowsPerPage - 1)) / rowsPerPage;
 
-    const placeSidePages = async (pick) => {
-      let pageIndex = 0;
-      while (pageIndex * perPage < rows.length) {
-        if (pageIndex > 0) pdf.addPage();
-        for (let rIndex = 0; rIndex < perPage; rIndex++) {
-          const itemIndex = pageIndex * perPage + rIndex;
-          if (itemIndex >= rows.length) break;
-          const r = rows[itemIndex];
-          const side = pick === 'front' ? 'front' : 'back';
-          const text = side === 'front' ? (r.colA || '') : (r.colB || '');
-          const canvas = await renderCardSideCanvas(text, side, 2);
-          const col = rIndex % cols;
-          const row = Math.floor(rIndex / cols);
-          const x = pageMarginMm + col * (cellW + gapMm) + (cellW - drawW) / 2;
-          const y = pageMarginMm + row * (cellH + gapMm) + (cellH - drawH) / 2;
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, drawW, drawH);
+    async function drawPage(side, pageIndex) {
+      for (let rIndex = 0; rIndex < perPage; rIndex++) {
+        const itemIndex = pageIndex * perPage + rIndex;
+        if (itemIndex >= rows.length) break;
+        const r = rows[itemIndex];
+        const text = side === 'front' ? (r.colA || '') : (r.colB || '');
+        const canvas = await renderCardSideCanvas(text, side, 2);
+        let col = rIndex % cols;
+        let row = Math.floor(rIndex / cols);
+        if (side === 'back') {
+          const backIdx = frontIndexToBackIndex(rIndex, cols, rowsPerPage, state.settings.flipEdge);
+          col = backIdx % cols;
+          row = Math.floor(backIdx / cols);
         }
-        pageIndex++;
+        let x = marginMm + col * (cellW + gapMm) + (cellW - drawW) / 2;
+        let y = marginMm + row * (cellH + gapMm) + (cellH - drawH) / 2;
+        if (side === 'back') {
+          x += parseFloat(state.settings.backOffsetXMm) || 0;
+          y += parseFloat(state.settings.backOffsetYMm) || 0;
+        }
+        const dataUrl = canvas.toDataURL('image/png');
+        const rotation = side === 'back' ? effectiveBackRotation(
+          paper.w > paper.h,
+          state.settings.flipEdge,
+          state.settings.backRotation
+        ) : 0;
+        pdf.addImage(dataUrl, 'PNG', x, y, drawW, drawH, undefined, undefined, rotation);
+        if (state.settings.showMarks) drawCropMarks(pdf, x, y, drawW, drawH);
       }
-    };
+    }
 
+    const totalPages = Math.ceil(rows.length / perPage);
     if (sideMode === 'front') {
-      await placeSidePages('front');
+      for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+        if (pageIndex > 0) pdf.addPage();
+        await drawPage('front', pageIndex);
+      }
     } else if (sideMode === 'back') {
-      await placeSidePages('back');
+      for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+        if (pageIndex > 0) pdf.addPage();
+        await drawPage('back', pageIndex);
+      }
     } else {
-      await placeSidePages('front');
-      await placeSidePages('back');
+      // 1 Vorderseite, 2 Rückseite, 3 Vorderseite, 4 Rückseite, ...
+      let first = true;
+      for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+        if (!first) pdf.addPage();
+        await drawPage('front', pageIndex);
+        pdf.addPage();
+        await drawPage('back', pageIndex);
+        first = false;
+      }
     }
 
     const fileSuffix = sideMode === 'both' ? 'front_back' : sideMode;
@@ -530,20 +636,84 @@
     const scale = dpi / 96; // html2canvas scale vs CSS px assumption
 
     let index = 1;
-    for (const r of selected) {
-      const base = filenameFromTemplate(r, index);
-      const ext = state.settings.exportFormat === 'jpg' ? 'jpg' : 'png';
-      if (sideMode === 'front' || sideMode === 'both') {
-        const front = await renderCardSideCanvas(r.colA || '', 'front', scale);
-        const frontData = front.toDataURL(format);
-        zip.file(`${base}_front.${ext}`, frontData.split(',')[1], { base64: true });
+    const ext = state.settings.exportFormat === 'jpg' ? 'jpg' : 'png';
+    if (state.settings.imageExportMode === 'cards') {
+      for (const r of selected) {
+        const base = filenameFromTemplate(r, index);
+        if (sideMode === 'front' || sideMode === 'both') {
+          const front = await renderCardSideCanvas(r.colA || '', 'front', scale);
+          const frontData = front.toDataURL(format);
+          zip.file(`${base}_front.${ext}`, frontData.split(',')[1], { base64: true });
+        }
+        if (sideMode === 'back' || sideMode === 'both') {
+          const back = await renderCardSideCanvas(r.colB || '', 'back', scale);
+          const backData = back.toDataURL(format);
+          zip.file(`${base}_back.${ext}`, backData.split(',')[1], { base64: true });
+        }
+        index++;
       }
-      if (sideMode === 'back' || sideMode === 'both') {
-        const back = await renderCardSideCanvas(r.colB || '', 'back', scale);
-        const backData = back.toDataURL(format);
-        zip.file(`${base}_back.${ext}`, backData.split(',')[1], { base64: true });
+    } else {
+      // pages mode: create paired pages as PNGs inside zip, respecting 1V,2R,3V ... numbering per page
+      // We'll render a composed canvas per page grid for front then back, and name them page_0001_front/back
+      const perPage = parseInt(state.settings.cardsPerPage, 10) || 1;
+      const paper = getPaperSizeMm();
+      const marginMm = parseFloat(state.settings.pageMarginMm) || 0;
+      const gapMm = parseFloat(state.settings.gapMm) || 0;
+      const baseW = state.settings.widthMm;
+      const baseH = state.settings.heightMm;
+      const { cols, rows: rowsPerPage, drawW, drawH } = computeBestGrid(
+        perPage, paper.w, paper.h, marginMm, gapMm, baseW, baseH
+      );
+      const cellW = (paper.w - marginMm * 2 - gapMm * (cols - 1)) / cols;
+      const cellH = (paper.h - marginMm * 2 - gapMm * (rowsPerPage - 1)) / rowsPerPage;
+      const pagePxW = mmToPxAtDpi(paper.w, 96 * scale);
+      const pagePxH = mmToPxAtDpi(paper.h, 96 * scale);
+
+      async function renderComposedPage(side, startIndex) {
+        const canvas = document.createElement('canvas');
+        canvas.width = pagePxW; canvas.height = pagePxH;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        for (let rIndex = 0; rIndex < perPage; rIndex++) {
+          const itemIndex = startIndex + rIndex;
+          if (itemIndex >= selected.length) break;
+          const r = selected[itemIndex];
+          let col = rIndex % cols; let row = Math.floor(rIndex / cols);
+          if (side === 'back') {
+            const backIdx = frontIndexToBackIndex(rIndex, cols, rowsPerPage, state.settings.flipEdge);
+            col = backIdx % cols; row = Math.floor(backIdx / cols);
+          }
+          const xMm = marginMm + col * (cellW + gapMm) + (cellW - drawW) / 2;
+          const yMm = marginMm + row * (cellH + gapMm) + (cellH - drawH) / 2;
+          const dx = mmToPxAtDpi(xMm + (side==='back' ? (parseFloat(state.settings.backOffsetXMm)||0) : 0), 96 * scale);
+          const dy = mmToPxAtDpi(yMm + (side==='back' ? (parseFloat(state.settings.backOffsetYMm)||0) : 0), 96 * scale);
+          const dw = mmToPxAtDpi(drawW, 96 * scale);
+          const dh = mmToPxAtDpi(drawH, 96 * scale);
+          const cardCanvas = await renderCardSideCanvas(side === 'front' ? (r.colA||'') : (r.colB||''), side, scale);
+          // rotation for back in images is applied by rotating draw context if needed
+          const rot = side === 'back' ? effectiveBackRotation(paper.w > paper.h, state.settings.flipEdge, state.settings.backRotation) : 0;
+          if (rot) {
+            ctx.save();
+            ctx.translate(dx + dw/2, dy + dh/2);
+            ctx.rotate((rot * Math.PI)/180);
+            ctx.drawImage(cardCanvas, -dw/2, -dh/2, dw, dh);
+            ctx.restore();
+          } else {
+            ctx.drawImage(cardCanvas, dx, dy, dw, dh);
+          }
+        }
+        return canvas.toDataURL(format);
       }
-      index++;
+
+      let pageNum = 1;
+      for (let start = 0; start < selected.length; start += perPage) {
+        const frontData = await renderComposedPage('front', start);
+        const backData = await renderComposedPage('back', start);
+        const num = String(pageNum).padStart(4, '0');
+        zip.file(`page_${num}_front.${ext}`, frontData.split(',')[1], { base64: true });
+        zip.file(`page_${num}_back.${ext}`, backData.split(',')[1], { base64: true });
+        pageNum++;
+      }
     }
     const blob = await zip.generateAsync({ type: 'blob' });
     const a = document.createElement('a');
@@ -657,6 +827,14 @@
   els.cardsPerPage && els.cardsPerPage.addEventListener('change', () => { state.settings.cardsPerPage = parseInt(els.cardsPerPage.value,10)||1; saveState(); updateExportSummary(); });
   els.paperSize && els.paperSize.addEventListener('change', () => { state.settings.paperSize = els.paperSize.value; saveState(); updateExportSummary(); });
   els.filenameTpl && els.filenameTpl.addEventListener('input', () => { state.settings.filenameTpl = els.filenameTpl.value; saveState(); });
+  els.flipEdge && els.flipEdge.addEventListener('change', () => { state.settings.flipEdge = els.flipEdge.value; saveState(); });
+  els.backRotation && els.backRotation.addEventListener('change', () => { state.settings.backRotation = els.backRotation.value; saveState(); });
+  els.pageMarginMm && els.pageMarginMm.addEventListener('input', () => { state.settings.pageMarginMm = parseFloat(els.pageMarginMm.value)||0; saveState(); });
+  els.gapMm && els.gapMm.addEventListener('input', () => { state.settings.gapMm = parseFloat(els.gapMm.value)||0; saveState(); });
+  els.backOffsetXMm && els.backOffsetXMm.addEventListener('input', () => { state.settings.backOffsetXMm = parseFloat(els.backOffsetXMm.value)||0; saveState(); });
+  els.backOffsetYMm && els.backOffsetYMm.addEventListener('input', () => { state.settings.backOffsetYMm = parseFloat(els.backOffsetYMm.value)||0; saveState(); });
+  els.showMarks && els.showMarks.addEventListener('change', () => { state.settings.showMarks = !!els.showMarks.checked; saveState(); });
+  els.imageExportMode && els.imageExportMode.addEventListener('change', () => { state.settings.imageExportMode = els.imageExportMode.value; saveState(); });
 
   // Download button
   els.downloadBtn && els.downloadBtn.addEventListener('click', async () => {
