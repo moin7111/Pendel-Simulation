@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="/static/styles.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Lora:wght@400;600&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <style>
-      .layout { display: grid; grid-template-columns: 1fr 360px; gap: 12px; padding: 12px; height: calc(100% - 58px); }
-      .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 10px; padding: 12px; overflow: auto; }
+      .layout { display: grid; grid-template-columns: 1fr 380px; gap: 12px; padding: 12px; height: calc(100% - 58px); }
+      .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 10px; padding: 12px; overflow-y: auto; overflow-x: hidden; }
       /* Toolbar becomes sticky for long tables */
       .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; position: sticky; top: 0; z-index: 5; background: var(--panel); padding-top: 4px; padding-bottom: 8px; }
       .grid { width: 100%; border-collapse: collapse; }
@@ -27,6 +27,16 @@
       .field { display: grid; gap: 6px; margin-bottom: 8px; }
       select, input[type="number"], input[type="text"] { background: #0b1220; color: var(--text); border: 1px solid #374151; border-radius: 6px; padding: 6px 8px; }
       .empty { display: grid; place-items: center; min-height: 120px; color: var(--muted); border: 1px dashed #334155; border-radius: 8px; }
+      /* Inspector with tabs */
+      .inspector { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+      .inspector-header { position: sticky; top: 0; z-index: 3; background: var(--panel); padding-bottom: 8px; margin-bottom: 8px; }
+      .tabs { display: flex; gap: 6px; background: #0b1220; padding: 4px; border-radius: 8px; border: 1px solid #1f2937; }
+      .tab { flex: 1; padding: 6px 10px; background: #0f172a; border: 1px solid #1f2937; border-radius: 6px; color: var(--text); cursor: pointer; }
+      .tab.active { background: #1f2937; border-color: #2b3546; }
+      .inspector-body { overflow-y: auto; overflow-x: hidden; display: grid; gap: 12px; }
+      [role="tabpanel"] { display: none; }
+      [role="tabpanel"].active { display: block; }
+      .inspector-footer { position: sticky; bottom: 0; padding: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: linear-gradient(180deg, rgba(17,24,39,0.6), var(--panel)); border-top: 1px solid #1f2937; }
       @media (max-width: 980px) {
         .layout { grid-template-columns: 1fr; height: auto; }
         .card-preview { grid-template-columns: 1fr; }
@@ -65,6 +75,8 @@
           <span id="validation" class="muted" aria-live="polite"></span>
           <button id="undo" class="btn" title="Rückgängig">↶</button>
           <button id="redo" class="btn" title="Wiederholen">↷</button>
+          <span style="flex:1"></span>
+          <button id="openExportTab" class="btn primary" title="Zum Export">Exportieren</button>
         </div>
 
         <table class="grid" id="dataGrid" aria-label="Tabellenansicht">
@@ -81,106 +93,126 @@
       </section>
 
       <aside class="panel">
-        <div class="field">
-          <label>Spaltenzuordnung</label>
-          <div class="row">
-            <span class="muted">Vorderseite:</span>
-            <select id="colA"></select>
-            <span class="muted">Rückseite:</span>
-            <select id="colB"></select>
+        <div class="inspector" id="inspector">
+          <div class="inspector-header">
+            <div class="tabs" role="tablist" aria-label="Einstellungen">
+              <button class="tab active" id="tabKarte" data-tab="karte" role="tab" aria-selected="true" aria-controls="panelKarte">Karte</button>
+              <button class="tab" id="tabExport" data-tab="export" role="tab" aria-selected="false" aria-controls="panelExport">Export</button>
+              <button class="tab" id="tabPreview" data-tab="preview" role="tab" aria-selected="false" aria-controls="panelPreview">Vorschau</button>
+            </div>
           </div>
-        </div>
+          <div class="inspector-body">
+            <section id="panelKarte" role="tabpanel" class="active">
+              <div class="field">
+                <label>Spaltenzuordnung</label>
+                <div class="row">
+                  <span class="muted">Vorderseite:</span>
+                  <select id="colA"></select>
+                  <span class="muted">Rückseite:</span>
+                  <select id="colB"></select>
+                </div>
+              </div>
 
-        <div class="field">
-          <label>Darstellung</label>
-          <div class="row">
-            <button id="alignToggle" class="btn" title="Textausrichtung umschalten">⟺</button>
-            <label class="muted">Schriftgröße (px) <input id="fontPx" type="number" value="28" step="1" min="10" max="72" /></label>
-          </div>
-          <div class="row">
-            <label class="muted">Hintergrundfarbe <input id="bgColor" type="color" value="#ffffff" /></label>
-            <label class="muted" title="Rahmen anzeigen">Rahmen <input id="borderEnabled" type="checkbox" checked /></label>
-            <label class="muted" title="Rahmenfarbe">Farbe <input id="borderColor" type="color" value="#334155" /></label>
-          </div>
-        </div>
-        <div class="field">
-          <label>Hintergründe</label>
-          <div class="row">
-            <label class="btn" style="position: relative; overflow: hidden;" title="Vorderseite Bild">
-              🖼️ Front
-              <input id="bgFront" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
-            </label>
-            <button id="bgFrontClear" class="btn" title="Front entfernen">✖</button>
-          </div>
-          <div class="row">
-            <label class="btn" style="position: relative; overflow: hidden;" title="Rückseite Bild">
-              🖼️ Back
-              <input id="bgBack" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
-            </label>
-            <button id="bgBackClear" class="btn" title="Back entfernen">✖</button>
-          </div>
-          <div class="row">
-            <span class="muted">Bildanpassung:</span>
-            <select id="bgMode">
-              <option value="cover" selected>Füllen (cover)</option>
-              <option value="contain">Einpassen (contain)</option>
-            </select>
-          </div>
-        </div>
+              <div class="field">
+                <label>Darstellung</label>
+                <div class="row">
+                  <button id="alignToggle" class="btn" title="Textausrichtung umschalten">⟺</button>
+                  <label class="muted">Schriftgröße (px) <input id="fontPx" type="number" value="28" step="1" min="10" max="72" /></label>
+                </div>
+                <div class="row">
+                  <label class="muted">Hintergrundfarbe <input id="bgColor" type="color" value="#ffffff" /></label>
+                  <label class="muted" title="Rahmen anzeigen">Rahmen <input id="borderEnabled" type="checkbox" checked /></label>
+                  <label class="muted" title="Rahmenfarbe">Farbe <input id="borderColor" type="color" value="#334155" /></label>
+                </div>
+              </div>
 
-        <div class="field">
-          <label>Export</label>
-          <div class="row">
-            <label class="muted">Format
-              <select id="exportFormat">
-                <option value="pdf" selected>PDF</option>
-                <option value="png">PNG</option>
-                <option value="jpg">JPG</option>
-              </select>
-            </label>
-            <label class="muted">Inhalt
-              <select id="exportSide">
-                <option value="front">Front</option>
-                <option value="back">Back</option>
-                <option value="both" selected>Front+Back</option>
-              </select>
-            </label>
-          </div>
-          <div class="row">
-            <label class="muted">Pro Seite
-              <select id="cardsPerPage">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="4" selected>4</option>
-                <option value="6">6</option>
-                <option value="8">8</option>
-              </select>
-            </label>
-            <label class="muted">Papier
-              <select id="paperSize">
-                <option value="A4" selected>A4</option>
-                <option value="A6">A6</option>
-              </select>
-            </label>
-            <button id="downloadBtn" class="btn primary">Herunterladen</button>
+              <div class="field">
+                <label>Hintergründe</label>
+                <div class="row">
+                  <label class="btn" style="position: relative; overflow: hidden;" title="Vorderseite Bild">
+                    🖼️ Front
+                    <input id="bgFront" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
+                  </label>
+                  <button id="bgFrontClear" class="btn" title="Front entfernen">✖</button>
+                </div>
+                <div class="row">
+                  <label class="btn" style="position: relative; overflow: hidden;" title="Rückseite Bild">
+                    🖼️ Back
+                    <input id="bgBack" type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
+                  </label>
+                  <button id="bgBackClear" class="btn" title="Back entfernen">✖</button>
+                </div>
+                <div class="row">
+                  <span class="muted">Bildanpassung:</span>
+                  <select id="bgMode">
+                    <option value="cover" selected>Füllen (cover)</option>
+                    <option value="contain">Einpassen (contain)</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section id="panelExport" role="tabpanel">
+              <div class="field">
+                <label>Export</label>
+                <div class="row">
+                  <label class="muted">Format
+                    <select id="exportFormat">
+                      <option value="pdf" selected>PDF</option>
+                      <option value="png">PNG</option>
+                      <option value="jpg">JPG</option>
+                    </select>
+                  </label>
+                  <label class="muted">Inhalt
+                    <select id="exportSide">
+                      <option value="front">Front</option>
+                      <option value="back">Back</option>
+                      <option value="both" selected>Front+Back</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="row">
+                  <label class="muted">Pro Seite
+                    <select id="cardsPerPage">
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="4" selected>4</option>
+                      <option value="6">6</option>
+                      <option value="8">8</option>
+                    </select>
+                  </label>
+                  <label class="muted">Papier
+                    <select id="paperSize">
+                      <option value="A4" selected>A4</option>
+                      <option value="A6">A6</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>Dateinamensvorlage</label>
+                <input id="filenameTpl" type="text" value="karte_{index}_{front}" placeholder="z.B. karte_{index}_{front}" />
+                <div class="muted">Platzhalter: {index}, {front}, {back}</div>
+              </div>
+
+              <div class="inspector-footer">
+                <div id="exportSummary" class="muted">–</div>
+                <button id="downloadBtn" class="btn primary">Exportieren</button>
+              </div>
+            </section>
+
+            <section id="panelPreview" role="tabpanel">
+              <div class="field">
+                <label>Live‑Vorschau (erste ausgewählte Zeile)</label>
+                <div class="card-preview">
+                  <div class="card" id="previewFront" aria-label="Vorderseite" title="Vorderseite Vorschau" style="position:relative;"></div>
+                  <div class="card" id="previewBack" aria-label="Rückseite" title="Rückseite Vorschau" style="position:relative;"></div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
-
-        <div class="field">
-          <label>Dateinamensvorlage</label>
-          <input id="filenameTpl" type="text" value="karte_{index}_{front}" placeholder="z.B. karte_{index}_{front}" />
-          <div class="muted">Platzhalter: {index}, {front}, {back}</div>
-        </div>
-
-        <div class="field">
-          <label>Live‑Vorschau (erste ausgewählte Zeile)</label>
-          <div class="card-preview">
-            <div class="card" id="previewFront" aria-label="Vorderseite" title="Vorderseite Vorschau" style="position:relative;"></div>
-            <div class="card" id="previewBack" aria-label="Rückseite" title="Rückseite Vorschau" style="position:relative;"></div>
-          </div>
-        </div>
-
-        
       </aside>
     </main>
 

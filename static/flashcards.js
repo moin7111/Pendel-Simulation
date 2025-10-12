@@ -76,7 +76,24 @@
     paperSize: document.getElementById('paperSize'),
     downloadBtn: document.getElementById('downloadBtn'),
     filenameTpl: document.getElementById('filenameTpl'),
+    // Tabs and panels
+    tabKarte: document.getElementById('tabKarte'),
+    tabExport: document.getElementById('tabExport'),
+    tabPreview: document.getElementById('tabPreview'),
+    panelKarte: document.getElementById('panelKarte'),
+    panelExport: document.getElementById('panelExport'),
+    panelPreview: document.getElementById('panelPreview'),
+    exportSummary: document.getElementById('exportSummary'),
+    openExportTab: document.getElementById('openExportTab'),
   };
+
+  // Debounced preview rendering to reduce work during typing
+  let previewPending = false;
+  function requestPreviewRender(delayMs = 50) {
+    if (previewPending) return;
+    previewPending = true;
+    setTimeout(() => { previewPending = false; renderPreview(); }, delayMs);
+  }
   function saveState() {
     try {
       const { bgFrontDataUrl, bgBackDataUrl, ...rest } = state.settings;
@@ -166,6 +183,7 @@
     state.selectedIds = new Set(data.selectedIds);
     renderGrid();
     renderPreview();
+    updateExportSummary();
   }
 
   function redo() {
@@ -178,6 +196,7 @@
     state.selectedIds = new Set(data.selectedIds);
     renderGrid();
     renderPreview();
+    updateExportSummary();
   }
 
   function renderGrid() {
@@ -207,7 +226,7 @@
         state.rows.splice(toIndex, 0, moved);
         state.drag.draggingId = null;
         renderGrid();
-        renderPreview();
+        requestPreviewRender();
         saveState();
       });
 
@@ -219,7 +238,7 @@
       cb.addEventListener('change', () => {
         if (cb.checked) state.selectedIds.add(row.id); else state.selectedIds.delete(row.id);
         renderGrid();
-        renderPreview();
+        requestPreviewRender();
       });
       tdSel.appendChild(cb);
       tr.appendChild(tdSel);
@@ -235,7 +254,7 @@
       const tdA = document.createElement('td');
       const inpA = document.createElement('input');
       inpA.value = row.colA || '';
-      const updateA = () => { row.colA = inpA.value; tdA.classList.toggle('invalid', !inpA.value.trim()); renderPreview(); updateValidation(); saveState(); };
+      const updateA = () => { row.colA = inpA.value; tdA.classList.toggle('invalid', !inpA.value.trim()); requestPreviewRender(); updateValidation(); saveState(); };
       inpA.addEventListener('input', updateA);
       tdA.classList.toggle('invalid', !inpA.value.trim());
       inpA.setAttribute('aria-label', 'Vorderseite Text');
@@ -246,7 +265,7 @@
       const tdB = document.createElement('td');
       const inpB = document.createElement('input');
       inpB.value = row.colB || '';
-      const updateB = () => { row.colB = inpB.value; tdB.classList.toggle('invalid', !inpB.value.trim()); renderPreview(); updateValidation(); saveState(); };
+      const updateB = () => { row.colB = inpB.value; tdB.classList.toggle('invalid', !inpB.value.trim()); requestPreviewRender(); updateValidation(); saveState(); };
       inpB.addEventListener('input', updateB);
       tdB.classList.toggle('invalid', !inpB.value.trim());
       inpB.setAttribute('aria-label', 'Rückseite Text');
@@ -573,7 +592,7 @@
     // Auto-select the newly added row for quicker preview feedback
     const last = state.rows[state.rows.length - 1];
     state.selectedIds = new Set([last.id]);
-    renderPreview();
+    requestPreviewRender();
     saveState();
   });
 
@@ -584,27 +603,27 @@
 
   els.selectAll.addEventListener('change', () => {
     state.selectedIds = new Set(els.selectAll.checked ? state.rows.map(r=>r.id) : []);
-    renderGrid(); renderPreview();
+    renderGrid(); requestPreviewRender();
   });
 
   els.hasHeader.addEventListener('change', () => {
     state.settings.hasHeader = els.hasHeader.checked;
   });
 
-  els.colA.addEventListener('change', () => { state.settings.colAKey = parseInt(els.colA.value,10); remapFromCols(); renderGrid(); renderPreview(); });
-  els.colB.addEventListener('change', () => { state.settings.colBKey = parseInt(els.colB.value,10); remapFromCols(); renderGrid(); renderPreview(); });
+  els.colA.addEventListener('change', () => { state.settings.colAKey = parseInt(els.colA.value,10); remapFromCols(); renderGrid(); requestPreviewRender(); });
+  els.colB.addEventListener('change', () => { state.settings.colBKey = parseInt(els.colB.value,10); remapFromCols(); renderGrid(); requestPreviewRender(); });
 
   // Style controls
   els.alignToggle && els.alignToggle.addEventListener('click', () => {
     const cycle = ['center','left','right'];
     const idx = cycle.indexOf(state.settings.align);
     state.settings.align = cycle[(idx + 1) % cycle.length];
-    renderPreview();
+    requestPreviewRender();
   });
-  els.fontPx && els.fontPx.addEventListener('input', () => { state.settings.fontPx = parseInt(els.fontPx.value,10)||DEFAULT_FONT_PX; renderPreview(); saveState(); });
-  els.bgColor && els.bgColor.addEventListener('input', () => { state.settings.bgColor = els.bgColor.value; renderPreview(); saveState(); });
-  els.borderEnabled && els.borderEnabled.addEventListener('change', () => { state.settings.borderEnabled = !!els.borderEnabled.checked; renderPreview(); saveState(); });
-  els.borderColor && els.borderColor.addEventListener('input', () => { state.settings.borderColor = els.borderColor.value; renderPreview(); saveState(); });
+  els.fontPx && els.fontPx.addEventListener('input', () => { state.settings.fontPx = parseInt(els.fontPx.value,10)||DEFAULT_FONT_PX; requestPreviewRender(); saveState(); });
+  els.bgColor && els.bgColor.addEventListener('input', () => { state.settings.bgColor = els.bgColor.value; requestPreviewRender(); saveState(); });
+  els.borderEnabled && els.borderEnabled.addEventListener('change', () => { state.settings.borderEnabled = !!els.borderEnabled.checked; requestPreviewRender(); saveState(); });
+  els.borderColor && els.borderColor.addEventListener('input', () => { state.settings.borderColor = els.borderColor.value; requestPreviewRender(); saveState(); });
 
   // Backgrounds
   function readFileAsDataUrl(file) {
@@ -620,23 +639,23 @@
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     state.settings.bgFrontDataUrl = String(await readFileAsDataUrl(file));
-    renderPreview(); saveState();
+    requestPreviewRender(); saveState();
   });
   els.bgBack && els.bgBack.addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     state.settings.bgBackDataUrl = String(await readFileAsDataUrl(file));
-    renderPreview(); saveState();
+    requestPreviewRender(); saveState();
   });
-  els.bgFrontClear && els.bgFrontClear.addEventListener('click', () => { state.settings.bgFrontDataUrl = null; renderPreview(); saveState(); });
-  els.bgBackClear && els.bgBackClear.addEventListener('click', () => { state.settings.bgBackDataUrl = null; renderPreview(); saveState(); });
-  els.bgMode && els.bgMode.addEventListener('change', () => { state.settings.bgMode = els.bgMode.value; renderPreview(); saveState(); });
+  els.bgFrontClear && els.bgFrontClear.addEventListener('click', () => { state.settings.bgFrontDataUrl = null; requestPreviewRender(); saveState(); });
+  els.bgBackClear && els.bgBackClear.addEventListener('click', () => { state.settings.bgBackDataUrl = null; requestPreviewRender(); saveState(); });
+  els.bgMode && els.bgMode.addEventListener('change', () => { state.settings.bgMode = els.bgMode.value; requestPreviewRender(); saveState(); });
 
   // Export controls
-  els.exportFormat && els.exportFormat.addEventListener('change', () => { state.settings.exportFormat = els.exportFormat.value; saveState(); });
-  els.exportSide && els.exportSide.addEventListener('change', () => { state.settings.exportSide = els.exportSide.value; saveState(); });
-  els.cardsPerPage && els.cardsPerPage.addEventListener('change', () => { state.settings.cardsPerPage = parseInt(els.cardsPerPage.value,10)||1; saveState(); });
-  els.paperSize && els.paperSize.addEventListener('change', () => { state.settings.paperSize = els.paperSize.value; saveState(); });
+  els.exportFormat && els.exportFormat.addEventListener('change', () => { state.settings.exportFormat = els.exportFormat.value; saveState(); updateExportSummary(); });
+  els.exportSide && els.exportSide.addEventListener('change', () => { state.settings.exportSide = els.exportSide.value; saveState(); updateExportSummary(); });
+  els.cardsPerPage && els.cardsPerPage.addEventListener('change', () => { state.settings.cardsPerPage = parseInt(els.cardsPerPage.value,10)||1; saveState(); updateExportSummary(); });
+  els.paperSize && els.paperSize.addEventListener('change', () => { state.settings.paperSize = els.paperSize.value; saveState(); updateExportSummary(); });
   els.filenameTpl && els.filenameTpl.addEventListener('input', () => { state.settings.filenameTpl = els.filenameTpl.value; saveState(); });
 
   // Download button
@@ -657,14 +676,48 @@
       const text = await file.text();
       pushHistory();
       loadCsv(text);
+      updateExportSummary();
     } else if (ext === 'xlsx' || ext === 'xls' || ext === 'ods') {
       const buf = await file.arrayBuffer();
       pushHistory();
       loadXlsx(buf);
+      updateExportSummary();
     } else {
       alert('Nicht unterstütztes Format. Erlaubt: CSV, XLSX, XLS, ODS');
     }
   });
+
+  function updateExportSummary() {
+    if (!els.exportSummary) return;
+    const total = state.rows.length;
+    const selected = state.selectedIds.size || total;
+    const perPage = parseInt(state.settings.cardsPerPage, 10) || 1;
+    const paper = state.settings.paperSize;
+    const side = state.settings.exportSide === 'both' ? 'Front + Back' : state.settings.exportSide;
+    els.exportSummary.textContent = `${selected}/${total} Karten · ${perPage} pro Seite · ${paper} · ${side}`;
+  }
+
+  // Tabs behavior
+  function activateTab(name) {
+    const tabs = {
+      karte: { tab: els.tabKarte, panel: els.panelKarte },
+      export: { tab: els.tabExport, panel: els.panelExport },
+      preview: { tab: els.tabPreview, panel: els.panelPreview },
+    };
+    Object.entries(tabs).forEach(([key, entry]) => {
+      if (!entry || !entry.tab || !entry.panel) return;
+      const isActive = key === name;
+      entry.tab.classList.toggle('active', isActive);
+      entry.tab.setAttribute('aria-selected', String(isActive));
+      entry.panel.classList.toggle('active', isActive);
+    });
+    if (name === 'export') updateExportSummary();
+    if (name === 'preview') requestPreviewRender(0);
+  }
+  els.tabKarte && els.tabKarte.addEventListener('click', () => activateTab('karte'));
+  els.tabExport && els.tabExport.addEventListener('click', () => activateTab('export'));
+  els.tabPreview && els.tabPreview.addEventListener('click', () => activateTab('preview'));
+  els.openExportTab && els.openExportTab.addEventListener('click', () => activateTab('export'));
 
   // Initialize from saved state if available, otherwise sample row
   const restored = loadSavedState();
@@ -676,4 +729,5 @@
   syncControlsFromSettings();
   renderGrid();
   renderPreview();
+  updateExportSummary();
 })();
