@@ -19,6 +19,13 @@ input { width: 100%; background: #0b1220; color: var(--text); border: 1px solid 
 .range-wrap { display: grid; grid-template-columns: 1fr 68px; gap: 8px; align-items: center; }
 .row { display: flex; gap: 8px; }
 
+/* Prevent horizontal scroll on panels/inspector */
+.panel, .controls { overflow-x: hidden; }
+
+/* Buttons refinements for consistency */
+.btn { line-height: 1; min-height: 36px; }
+.btn.primary { color: #eaf2ff; }
+
 /* Hub */
 .hub-container { padding: 16px; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
