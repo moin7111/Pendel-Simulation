@@ -30,6 +30,10 @@ def create_app() -> Flask:
     def flashcards():
         return send_from_directory(app.template_folder, "flashcards.html")
 
+    @app.get("/abi")
+    def abi():
+        return send_from_directory(app.template_folder, "abi.html")
+
     @app.get("/static/<path:filename>")
     def static_files(filename: str):
         return send_from_directory(app.static_folder, filename)
