@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Personalisiertes Abi‑Lernen (MVP)</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 10px; padding: 12px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .stack { display: grid; gap: 10px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .kpi { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; }
+      .kpi .card { text-align: center; padding: 14px; background: #0b1220; border: 1px solid #1f2937; border-radius: 10px; }
+      .hidden { display: none !important; }
+      .tag { padding: 2px 8px; border: 1px solid #374151; border-radius: 999px; font-size: 12px; }
+      .list { display: grid; gap: 6px; }
+      .list-item { display: flex; justify-content: space-between; align-items: center; border: 1px solid #1f2937; padding: 8px; border-radius: 8px; background: #0b1220; }
+      .pill { font-variant-numeric: tabular-nums; padding: 2px 6px; border-radius: 6px; background: rgba(148,163,184,.08); border: 1px solid #2b3546; }
+      .card-ui { display: grid; gap: 10px; background: #0b1220; border: 1px solid #1f2937; border-radius: 10px; padding: 16px; min-height: 200px; place-items: center; text-align: center; }
+      .answer-controls { display: grid; gap: 8px; }
+      .answer-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      .tabs { display: flex; gap: 6px; }
+      .tab-btn { padding: 6px 10px; border: 1px solid #374151; background: #0b1220; color: var(--text); border-radius: 6px; cursor: pointer; }
+      .tab-btn.active { background: #1f2937; }
+      .table { width: 100%; border-collapse: collapse; }
+      .table th, .table td { border: 1px solid #374151; padding: 6px 8px; text-align: left; }
+      .table thead th { background: #0b1220; }
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Personalisiertes Abi‑Lernen (MVP)</h1>
+      <nav>
+        <a href="/" class="btn">Hub</a>
+        <button id="navDashboard" class="btn">Dashboard</button>
+        <button id="navDecks" class="btn">Decks</button>
+        <button id="navStudy" class="btn primary">Lernen</button>
+      </nav>
+    </header>
+
+    <main class="hub-container">
+      <section id="dashboard" class="stack">
+        <div class="kpi">
+          <div class="card">
+            <div class="muted">Fakten fällig</div>
+            <div id="kpiFacts" style="font-size:28px;">0</div>
+          </div>
+          <div class="card">
+            <div class="muted">Vokabeln fällig</div>
+            <div id="kpiVocab" style="font-size:28px;">0</div>
+          </div>
+          <div class="card">
+            <div class="muted">Heute gelernt</div>
+            <div id="kpiLearned" style="font-size:28px;">0</div>
+          </div>
+          <div class="card">
+            <div class="muted">Streak</div>
+            <div id="kpiStreak" style="font-size:28px;">0</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <h3 style="margin-top:0;">Schnellstart</h3>
+            <div class="row">
+              <select id="quickMode">
+                <option value="facts">Fakten</option>
+                <option value="vocab">Vokabeln</option>
+                <option value="text">Text</option>
+              </select>
+              <button id="startQuick" class="btn primary">Session starten</button>
+            </div>
+            <p class="muted">Wähle Modus und starte eine 10‑Karten‑Session.</p>
+          </div>
+
+          <div class="panel">
+            <h3 style="margin-top:0;">Import / Export</h3>
+            <div class="row">
+              <label class="btn" style="position:relative; overflow:hidden;">
+                Import JSON
+                <input id="importJson" type="file" accept="application/json" style="position:absolute; inset:0; opacity:0; cursor:pointer;" />
+              </label>
+              <button id="exportJson" class="btn">Export JSON</button>
+              <button id="seedDemo" class="btn">Demo‑Daten laden</button>
+            </div>
+            <p class="muted">Daten werden lokal im Browser gespeichert (kein Login nötig).</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0;">Übersicht</h3>
+          <div id="overview" class="list"></div>
+        </div>
+      </section>
+
+      <section id="decks" class="stack hidden">
+        <div class="grid-2">
+          <div class="panel">
+            <h3 style="margin-top:0;">Neues Deck</h3>
+            <div class="stack">
+              <label>Titel <input id="deckTitle" type="text" placeholder="z. B. Geschichte – 1848" /></label>
+              <label>Typ
+                <select id="deckType">
+                  <option value="facts">Fakten</option>
+                  <option value="vocab">Vokabeln</option>
+                  <option value="text">Text</option>
+                </select>
+              </label>
+              <button id="createDeck" class="btn primary">Deck erstellen</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3 style="margin-top:0;">Karte hinzufügen</h3>
+            <div class="stack">
+              <label>Deck
+                <select id="itemDeck"></select>
+              </label>
+              <label>Vorderseite <input id="frontInput" type="text" placeholder="Frage / Wort" /></label>
+              <label>Rückseite <input id="backInput" type="text" placeholder="Antwort / Übersetzung" /></label>
+              <button id="addItem" class="btn">Hinzufügen</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0;">Decks</h3>
+          <table class="table">
+            <thead>
+              <tr><th>Titel</th><th>Typ</th><th>Karten</th><th>Fällig</th><th>Aktion</th></tr>
+            </thead>
+            <tbody id="deckTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="study" class="stack hidden">
+        <div class="panel">
+          <div class="row">
+            <label>Modus
+              <select id="studyMode">
+                <option value="facts">Fakten</option>
+                <option value="vocab">Vokabeln</option>
+                <option value="text">Text</option>
+              </select>
+            </label>
+            <label>Deck
+              <select id="studyDeck"></select>
+            </label>
+            <label>Menge
+              <select id="studyQty">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+              </select>
+            </label>
+            <button id="startStudy" class="btn primary">Start</button>
+            <button id="speakBtn" class="btn" title="Vorlesen (TTS)">🔊 Vorlesen</button>
+          </div>
+        </div>
+
+        <div class="card-ui" id="cardView" aria-live="polite">
+          <div id="cardFront"></div>
+          <div id="cardBack" class="hidden"></div>
+          <div class="row">
+            <button id="revealBtn" class="btn">Antwort zeigen</button>
+            <button id="flipBtn" class="btn hidden">Vorderseite</button>
+          </div>
+          <div id="vocabInputRow" class="row hidden">
+            <input id="vocabAnswer" type="text" placeholder="Antwort eingeben" />
+            <button id="checkVocab" class="btn">Prüfen</button>
+            <span id="vocabFeedback" class="muted"></span>
+          </div>
+          <div class="answer-controls hidden" id="qualityControls">
+            <div class="answer-row">
+              <button data-q="0" class="btn">Wiederholen</button>
+              <button data-q="3" class="btn">Schwer</button>
+              <button data-q="4" class="btn">Gut</button>
+              <button data-q="5" class="btn">Leicht</button>
+            </div>
+            <div class="row">
+              <label class="muted">Confidence (1‑5)
+                <input id="confidence" type="range" min="1" max="5" step="1" value="3" />
+              </label>
+            </div>
+          </div>
+          <div class="muted" id="progressInfo"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/abi.js"></script>
+  </body>
+</html>
