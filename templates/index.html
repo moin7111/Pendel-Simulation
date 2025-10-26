@@ -16,6 +16,7 @@
         <button id="modeSingle" class="btn">Einzelpendel</button>
         <button id="toggleTrail" class="btn">Spur an/aus</button>
         <button id="resetBtn" class="btn">Reset</button>
+        <button id="lyapOpen" class="btn">Lyapunov</button>
         <button id="startBtn" class="btn primary">Start</button>
         <button id="stopBtn" class="btn">Stopp</button>
       </nav>
@@ -64,7 +65,47 @@
       </aside>
     </main>
 
+    <!-- Lyapunov Modal -->
+    <div id="lyapModal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="lyapTitle">
+      <div class="modal-content">
+        <header class="modal-header">
+          <h2 id="lyapTitle">Lyapunov‑Schätzung</h2>
+          <button id="lyapClose" class="btn" aria-label="Schließen">✕</button>
+        </header>
+        <section class="modal-body">
+          <div class="modal-meta" id="lyapMeta"></div>
+          <div class="progress">
+            <div class="progress-bar" id="lyapProgress" style="width:0%"></div>
+          </div>
+          <div class="tabs">
+            <button class="tab active" data-tab="dtab">d(t)</button>
+            <button class="tab" data-tab="lntab">ln d(t)</button>
+            <button class="tab" data-tab="lambdatab">λ(t)</button>
+          </div>
+          <div class="tab-panels">
+            <div id="dtab" class="panel active"><canvas id="chartD"></canvas></div>
+            <div id="lntab" class="panel"><canvas id="chartLn"></canvas></div>
+            <div id="lambdatab" class="panel"><canvas id="chartLambda"></canvas></div>
+          </div>
+        </section>
+        <footer class="modal-footer">
+          <div class="left-controls">
+            <button id="lyapPause" class="btn">Pause</button>
+            <button id="lyapResume" class="btn">Fortsetzen</button>
+            <button id="lyapAbort" class="btn">Abbrechen</button>
+            <button id="lyapResetZoom" class="btn">Zoom reset</button>
+          </div>
+          <div class="right-controls">
+            <button id="lyapExportPNG" class="btn">Export PNG</button>
+            <button id="lyapExportCSV" class="btn">Export CSV</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
     <script src="/static/sim.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/pendulum-lyapunov.js"></script>
   </body>
   </html>
 
