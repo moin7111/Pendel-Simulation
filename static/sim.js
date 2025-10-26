@@ -93,7 +93,7 @@ class PendulumSim {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.params = { m1: 1.0, m2: 1.0, l1: 1.0, l2: 1.0, g: 9.81, damping: 0.0 };
+    this.params = { m1: 1.0, m2: 1.0, l1: 1.0, l2: 1.0, g: 9.81, damping: 0.02 };
     this.scale = 150; // px per meter
     this.mode = 'double';
     this.trailEnabled = true;
@@ -235,6 +235,19 @@ class PendulumSim {
       const stateLocal = this.mode === 'double' ? sys.state : sys.state.slice(0, 2);
       const paramsLocal = Object.assign({}, this.params, { m1: sys.m1 ?? this.params.m1, m2: sys.m2 ?? this.params.m2 });
       const next = Physics.rk4Step(stateLocal, dt, paramsLocal, deriv);
+      // For single pendulum, snap to rest near stable equilibrium to avoid endless micro-oscillation
+      if (this.mode === 'single') {
+        const twoPi = 2 * Math.PI;
+        const wrap = (a) => { let x = (a + Math.PI) % twoPi; if (x < 0) x += twoPi; return x - Math.PI; };
+        const angleEps = 0.003; // ~0.17°
+        const omegaEps = 0.003; // rad/s
+        const th = wrap(next[0]);
+        const w = next[1];
+        if (Math.abs(th) < angleEps && Math.abs(w) < omegaEps) {
+          next[0] = 0;
+          next[1] = 0;
+        }
+      }
       if (this.mode === 'double') sys.state = next; else sys.state = [next[0], next[1], sys.state[2], sys.state[3]];
       sys.state = Physics.normalizeAngles(sys.state);
     }
