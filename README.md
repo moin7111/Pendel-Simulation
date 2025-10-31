@@ -1,24 +1,36 @@
-# Pendel‑Simulator – Web App (Render)
+# Simulations-Hub – Flask + React/Vite
 
-Einfacher Doppel-/Einzelpendel‑Simulator als Web‑App. Server: Flask, Frontend: Canvas/JavaScript. Bereit für Deployment auf Render.
+Lokaler Playground für das Pendel (Canvas-basiert) und die neue Lyapunov/Logistik-Karte (React + WebWorker). Backend liefert statische Assets via Flask, Deployment-Ziel ist Render.
 
 ## Lokal starten
 
-Voraussetzungen: Python 3.10+.
+Voraussetzungen: Python 3.10+, Node 18+.
 
 ```bash
+# Backend (Flask)
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+# Frontend (React/Vite)
+cd frontend
+npm install
+npm run dev   # optional für Vite Dev-Server
+npm run build # erzeugt /static/logistic-app
+
+# Backend starten (liefert statische Assets inkl. Build)
+cd ..
 python app.py
 # Öffnen: http://localhost:8000
 ```
 
 ## Struktur
 
-- `app.py` – Flask‑Server (liefert `templates/index.html` und `/static`)
-- `templates/index.html` – UI, Canvas und Controls
-- `static/sim.js` – Pendel‑Physik (RK4) + Rendering & Interaktion im Browser
+- `app.py` – Flask‑Server (liefert Templates + statische Assets, inkl. React-Build unter `/logistic`)
+- `frontend/` – React + TypeScript (Vite), Chart.js Live-Plots, WebWorker für Lyapunov
+- `static/logistic-app/` – gebuildete React-App (wird via `npm run build` erzeugt)
+- `templates/index.html` – Canvas-basierter Pendel-Simulator
+- `static/sim.js` – Pendel-Physik (RK4) + Rendering & Interaktion im Browser
 - `static/styles.css` – Styles
 - `requirements.txt` – Python Abhängigkeiten
 - `render.yaml` – Render Blueprint (Infrastructure‑as‑Code)
@@ -30,21 +42,22 @@ python app.py
 2. In Render: New → Blueprint → Repository auswählen.
 3. Render liest `render.yaml` und erstellt den Web‑Service automatisch.
 4. Deploy startet mit:
-   - Build: `pip install -r requirements.txt`
+   - Build: `pip install -r requirements.txt && cd frontend && npm install && npm run build`
    - Start: `gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:app`
 
 Hinweis: `PORT` wird von Render gesetzt. `name` im `render.yaml` kannst du anpassen.
 
 ### Option B: Manuell (ohne Blueprint)
 1. New → Web Service → Repo auswählen → Environment: Python.
-2. Build Command: `pip install -r requirements.txt`
+2. Build Command: `pip install -r requirements.txt && cd frontend && npm install && npm run build`
 3. Start Command: `gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:app`
 4. Erstellen & deployen.
 
 ## Anpassungen
-- Simulationsparameter (Standardwerte) in `templates/index.html` (Inputs) bzw. `static/sim.js` (`this.params`, `this.dt`).
-- UI/Text/Styles in `templates/index.html` und `static/styles.css`.
+- Pendel-Parameter (Standardwerte) in `templates/index.html`/`static/sim.js`.
+- Lyapunov/Logistik UI in `frontend/src/App.tsx` (Charts, Modal, Worker-Anbindung).
+- Styles: Canvas (`static/styles.css`) bzw. React (`frontend/src/App.css`).
 
 ## Hinweise
-- Die ursprüngliche Datei `Simulation 0.1` nutzte ein Python‑UI‑Framework. Die Physik wurde schlank in JS portiert, um sie direkt im Browser zu berechnen und ruckelfrei zu rendern.
-- Server tut lediglich statisches Ausliefern; keine Backend‑Rechenlast nötig.
+- Lyapunov-Rechnung läuft clientseitig im WebWorker (Benettin-Renormierung + ln-Fit). Währenddessen bleibt die UI responsiv, Fortschritt/Plots erscheinen im Modal.
+- Flask liefert die gebaute React-App (`/static/logistic-app`). Falls kein Build vorhanden ist, fällt `/logistic` auf das Legacy-Template zurück.
