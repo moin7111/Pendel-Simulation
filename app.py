@@ -24,6 +24,10 @@ def create_app() -> Flask:
 
     @app.get("/logistic")
     def logistic():
+        build_dir = os.path.join(app.static_folder, "logistic-app")
+        index_path = os.path.join(build_dir, "index.html")
+        if os.path.exists(index_path):
+            return send_from_directory(build_dir, "index.html")
         return send_from_directory(app.template_folder, "logistic.html")
 
     @app.get("/flashcards")
