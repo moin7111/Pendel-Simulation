@@ -1,0 +1,7 @@
+/.venv
+__pycache__/
+/frontend/node_modules/
+/frontend/dist/
+/static/logistic-app/
+/frontend/.vite/
+.DS_Store
