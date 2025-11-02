@@ -79,15 +79,116 @@
 
     <div id="lyapunovOverlay" class="lyapunov-overlay" hidden>
       <div class="overlay-backdrop" aria-hidden="true"></div>
-      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="lyapunovTitle" tabindex="-1">
+      <section
+        class="overlay-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lyapunovTitle"
+        tabindex="-1"
+      >
         <header class="overlay-header">
           <div>
             <h2 id="lyapunovTitle">Lyapunov Explorer</h2>
-            <p class="muted small">React + WebWorker UI im Overlay</p>
+            <p class="muted small">Sensitivitätsanalyse direkt aus dem Doppelpendel</p>
           </div>
-          <button type="button" id="closeLyapunov" class="icon-btn" aria-label="Lyapunov Explorer schließen">×</button>
+          <button
+            type="button"
+            id="closeLyapunov"
+            class="icon-btn"
+            aria-label="Lyapunov Explorer schließen"
+          >
+            ×
+          </button>
         </header>
-        <iframe id="lyapunovFrame" title="Lyapunov Explorer" loading="lazy"></iframe>
+        <section class="lyapunov-body">
+          <aside class="lyapunov-controls" aria-label="Lyapunov Steuerung">
+            <div class="lyapunov-section">
+              <h3>Messung</h3>
+              <label>
+                <span>Δθ Startabweichung (°)</span>
+                <input
+                  id="lyapunovDelta"
+                  type="number"
+                  step="0.01"
+                  min="0.0001"
+                  value="0.05"
+                />
+              </label>
+              <label>
+                <span>Renorm-Intervall (s)</span>
+                <input
+                  id="lyapunovInterval"
+                  type="number"
+                  step="0.01"
+                  min="0.02"
+                  value="0.12"
+                />
+              </label>
+              <label>
+                <span>Sampling (ms)</span>
+                <input
+                  id="lyapunovSample"
+                  type="number"
+                  step="5"
+                  min="5"
+                  value="40"
+                />
+              </label>
+              <div class="lyapunov-buttons">
+                <button type="button" id="lyapunovStart" class="btn primary">Messung starten</button>
+                <button type="button" id="lyapunovStop" class="btn">Stopp</button>
+                <button type="button" id="lyapunovReset" class="btn">Zurücksetzen</button>
+              </div>
+            </div>
+            <div class="lyapunov-section">
+              <h3>Auswertung</h3>
+              <p class="meta">
+                Status: <strong id="lyapunovStatus">Bereit</strong>
+              </p>
+              <p class="meta">
+                λ aktuell: <strong id="lyapunovLambda">n/a</strong>
+              </p>
+              <p class="meta">
+                λ Ø: <strong id="lyapunovLambdaAvg">n/a</strong>
+              </p>
+              <p class="meta">
+                Renormierungen: <strong id="lyapunovRenorm">0</strong>
+              </p>
+              <p class="meta">
+                Messdauer: <strong id="lyapunovTime">0.00 s</strong>
+              </p>
+              <p class="meta">
+                |δ| zuletzt: <strong id="lyapunovDistance">–</strong>
+              </p>
+            </div>
+            <div class="lyapunov-section muted small" id="lyapunovHints">
+              <p>
+                Hinweis: Die Messung nutzt zwei virtuelle Doppelpendel mit minimaler Startabweichung.
+                Nach Parameteränderungen empfiehlt sich ein Neustart der Messung.
+              </p>
+            </div>
+          </aside>
+          <div class="lyapunov-charts">
+            <div class="chart-card">
+              <header>ln d(t)</header>
+              <canvas
+                id="lyapunovLogCanvas"
+                width="840"
+                height="320"
+                aria-label="Logarithmischer Abstand"
+              ></canvas>
+            </div>
+            <div class="chart-card">
+              <header>λ(t)</header>
+              <canvas
+                id="lyapunovLambdaCanvas"
+                width="840"
+                height="320"
+                aria-label="Laufender Lyapunov-Schätzwert"
+              ></canvas>
+            </div>
+          </div>
+        </section>
       </section>
     </div>
 
