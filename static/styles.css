@@ -23,7 +23,26 @@ canvas { background: #0a0f1a; width: 100%; height: 100%; max-height: 100%; borde
 .overlay-header h2 { margin: 0; font-size: 18px; }
 .icon-btn { background: transparent; border: 1px solid rgba(148,163,184,0.3); color: #e5e7eb; border-radius: 999px; width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; font-size: 18px; line-height: 1; }
 .icon-btn:hover { background: rgba(148,163,184,0.12); }
-#lyapunovFrame { flex: 1; border: none; background: #0f172a; }
+.lyapunov-body { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; flex: 1; min-height: 0; background: linear-gradient(120deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.92) 45%, rgba(8,11,20,0.88) 100%); }
+.lyapunov-controls { background: rgba(10,15,24,0.92); border-right: 1px solid rgba(148,163,184,0.15); padding: 16px; display: grid; gap: 12px; overflow-y: auto; }
+.lyapunov-controls label { display: grid; grid-template-columns: 1fr 120px; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+.lyapunov-controls input { width: 100%; }
+.lyapunov-section { background: rgba(17,24,39,0.62); border: 1px solid rgba(148,163,184,0.18); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+.lyapunov-section h3 { margin: 0; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: #e2e8f0; }
+.lyapunov-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.lyapunov-charts { padding: 18px; display: grid; grid-template-rows: 1fr 1fr; gap: 18px; overflow: auto; min-height: 0; }
+.chart-card { background: rgba(11,18,32,0.9); border: 1px solid rgba(148,163,184,0.2); border-radius: 12px; padding: 14px 16px; display: grid; gap: 12px; min-height: 0; box-shadow: inset 0 0 0 1px rgba(15,23,42,0.35); }
+.chart-card header { font-size: 14px; font-weight: 600; color: #f8fafc; letter-spacing: .03em; }
+.chart-card canvas { background: rgba(8,11,20,0.95); border: 1px solid rgba(148,163,184,0.18); border-radius: 8px; width: 100%; height: 100%; min-height: 140px; }
+.meta { margin: 0; font-size: 13px; color: #cbd5f5; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.meta strong { color: #f8fafc; font-weight: 600; letter-spacing: .01em; }
+.lyapunov-section.muted { background: rgba(12,18,32,0.55); color: var(--muted); }
+.lyapunov-section.muted p { margin: 0; line-height: 1.4; }
+@media (max-width: 980px) {
+  .lyapunov-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .lyapunov-controls { border-right: none; border-bottom: 1px solid rgba(148,163,184,0.15); grid-template-columns: 1fr; }
+  .lyapunov-charts { grid-template-rows: repeat(2, minmax(220px, 1fr)); }
+}
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 .controls { background: var(--panel); border: 1px solid #1f2937; border-radius: 10px; padding: 12px; display: grid; gap: 12px; overflow: auto; transition: max-height .25s ease, padding .25s ease, border-color .25s ease; max-height: 100%; }

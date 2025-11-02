@@ -99,10 +99,12 @@ class PendulumSim {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.energyCanvas = document.getElementById('energyCanvas');
-    this.energyCtx = this.energyCanvas ? this.energyCanvas.getContext('2d') : null;
-    this.phaseCanvas = document.getElementById('phaseCanvas');
-    this.phaseCtx = this.phaseCanvas ? this.phaseCanvas.getContext('2d') : null;
+    this.phasePanels = [
+      document.getElementById('phasePanel0'),
+      document.getElementById('phasePanel1'),
+    ];
+    this.phaseCanvases = this.phasePanels.map((panel) => panel ? panel.querySelector('canvas') : null);
+    this.phaseContexts = this.phaseCanvases.map((canvas) => (canvas ? canvas.getContext('2d') : null));
     this.params = { m1: 1.0, m2: 1.0, l1: 1.0, l2: 1.0, g: 9.81, damping: 0.0 };
     this.scale = 150; // px per meter
     this.mode = 'double';
@@ -117,12 +119,13 @@ class PendulumSim {
     this.systems = [makeSystem(0, '#2563EB')];
     this.activeSystemIndex = 0;
     this._lastGeom = {};
-    this.maxHistoryPoints = 1200;
+    this.maxHistoryPoints = Infinity;
     this.historySampleInterval = 0.02; // seconds between history samples
     this._historyAccumulator = 0;
     this.exportLog = [];
     this._clearHistories();
     this._bindInputs();
+    this._setupLyapunov();
     this._syncInputsFromActiveSystem();
     this._recordSnapshot(0, true);
     this._draw();
@@ -151,8 +154,24 @@ class PendulumSim {
     byId('w2').addEventListener('input', (e) => { const sys = this.systems[this.activeSystemIndex]; sys.state[3] = parseFloat(e.target.value) || 0; this._draw(); });
 
     // modes apply globally
-    byId('modeDouble').addEventListener('click', () => { this.mode = 'double'; this._recordSnapshot(0, true); this._draw(); });
-    byId('modeSingle').addEventListener('click', () => { this.mode = 'single'; this._recordSnapshot(0, true); this._draw(); });
+    byId('modeDouble').addEventListener('click', () => {
+      this.mode = 'double';
+      this._recordSnapshot(0, true);
+      this._draw();
+      if (this.lyapunov?.ready && !this.lyapunov.running) {
+        this._updateLyapunovUI(undefined, 'Messung bereit');
+      }
+    });
+    byId('modeSingle').addEventListener('click', () => {
+      this.mode = 'single';
+      if (this.lyapunov?.running) {
+        this._stopLyapunov('Messung gestoppt (Einzelpendel)');
+      } else if (this.lyapunov?.ready) {
+        this._updateLyapunovUI(undefined, 'Nur im Doppelpendel-Modus verfuegbar');
+      }
+      this._recordSnapshot(0, true);
+      this._draw();
+    });
 
     // trails
     byId('toggleTrail').addEventListener('click', () => { this.trailEnabled = !this.trailEnabled; /* do not clear to keep persistent until reset */ this._draw(); });
@@ -164,40 +183,7 @@ class PendulumSim {
     if (exportPngBtn) exportPngBtn.addEventListener('click', () => this.exportPNG());
 
     const lyapunovBtn = byId('openLyapunov');
-    const lyapunovOverlay = document.getElementById('lyapunovOverlay');
-    const lyapunovClose = document.getElementById('closeLyapunov');
-    const lyapunovFrame = document.getElementById('lyapunovFrame');
-    const lyapunovPanel = lyapunovOverlay ? lyapunovOverlay.querySelector('.overlay-panel') : null;
-    const lyapunovBackdrop = lyapunovOverlay ? lyapunovOverlay.querySelector('.overlay-backdrop') : null;
-    const openLyapunov = () => {
-      if (!lyapunovOverlay) return;
-      lyapunovOverlay.hidden = false;
-      lyapunovOverlay.classList.add('active');
-      if (lyapunovFrame && !lyapunovFrame.getAttribute('src')) {
-        lyapunovFrame.setAttribute('src', '/logistic');
-      }
-      this.stop();
-      lyapunovPanel?.focus?.();
-      setTimeout(() => lyapunovOverlay?.querySelector('iframe')?.focus?.(), 150);
-    };
-    const closeLyapunov = () => {
-      if (!lyapunovOverlay) return;
-      lyapunovOverlay.classList.remove('active');
-      lyapunovOverlay.hidden = true;
-    };
-    if (lyapunovBtn) lyapunovBtn.addEventListener('click', openLyapunov);
-    if (lyapunovClose) lyapunovClose.addEventListener('click', closeLyapunov);
-    if (lyapunovBackdrop) lyapunovBackdrop.addEventListener('click', closeLyapunov);
-    if (lyapunovOverlay) {
-      lyapunovOverlay.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') closeLyapunov();
-      });
-    }
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && lyapunovOverlay && !lyapunovOverlay.hidden) {
-        closeLyapunov();
-      }
-    });
+    if (lyapunovBtn) lyapunovBtn.addEventListener('click', () => this._openLyapunov());
 
     // speed factor
     const speedSlider = byId('speedFactor');
@@ -262,6 +248,9 @@ class PendulumSim {
   start() {
     if (this.running) return;
     this.running = true;
+    if (this.lyapunov?.running) {
+      this._updateLyapunovUI(undefined, 'Messung l?uft');
+    }
     this.lastTs = performance.now();
     const loop = (ts) => {
       if (!this.running) return;
@@ -280,12 +269,18 @@ class PendulumSim {
     };
     requestAnimationFrame(loop);
   }
-  stop() { this.running = false; }
+  stop() {
+    this.running = false;
+    if (this.lyapunov?.running) {
+      this._updateLyapunovUI(undefined, 'Pausiert (Simulation gestoppt)');
+    }
+  }
   reset() {
     // clear trails
     this.systems.forEach((sys) => { sys.trail = []; sys.state = [sys.initialAngles[0], 0, sys.initialAngles[1], 0]; });
     this.time = 0;
     this._clearHistories();
+    this._resetLyapunov();
     this._recordSnapshot(0, true);
     this._draw();
   }
@@ -301,6 +296,7 @@ class PendulumSim {
     }
     this.time += dt;
     this._recordSnapshot(dt);
+    this._lyapunovStep(dt);
     this._draw();
   }
   _draw() {
@@ -344,9 +340,10 @@ class PendulumSim {
       // trail per system
       if (this.trailEnabled) {
         sys.trail.push([x2, y2]);
-        if (!this.persistTrail && sys.trail.length > this.maxTrail) sys.trail.shift();
-        for (let t = 1; t < sys.trail.length; t++) {
-          const alpha = 0.25 + 0.75 * (t / sys.trail.length);
+        const trailStart = this.persistTrail ? 0 : Math.max(0, sys.trail.length - this.maxTrail);
+        const visibleLength = Math.max(1, sys.trail.length - trailStart);
+        for (let t = trailStart + 1; t < sys.trail.length; t++) {
+          const alpha = 0.25 + 0.75 * ((t - trailStart) / visibleLength);
           const { r, g, b } = sys.color.trailRgb;
           ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
           ctx.lineWidth = 2;
@@ -374,8 +371,7 @@ class PendulumSim {
     this._drawAuxiliaryCharts();
   }
   _drawAuxiliaryCharts() {
-    if (this.energyCtx) this._drawEnergyChart();
-    if (this.phaseCtx) this._drawPhasePlot();
+    this._drawPhasePlots();
   }
   _prepareChartCanvas(canvas, ctx) {
     if (!canvas || !ctx) return null;
@@ -394,101 +390,53 @@ class PendulumSim {
     ctx.clearRect(0, 0, width, height);
     return { ctx, width, height };
   }
-  _drawEnergyChart() {
-    const prepared = this._prepareChartCanvas(this.energyCanvas, this.energyCtx);
-    if (!prepared) return;
-    const { ctx, width, height } = prepared;
-    ctx.fillStyle = 'rgba(8,11,20,0.95)';
-    ctx.fillRect(0, 0, width, height);
+  _drawPhasePlots() {
+    if (!this.phaseCanvases || !this.phaseContexts) return;
+    for (let i = 0; i < this.phaseCanvases.length; i++) {
+      const canvas = this.phaseCanvases[i];
+      const ctx = this.phaseContexts[i];
+      if (!canvas || !ctx) continue;
+      const panel = this.phasePanels[i];
+      const sys = this.systems[i];
 
-    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
-    if (!sys || !sys.history.time.length) {
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '12px system-ui';
-      ctx.fillText('Keine Daten', 12, height / 2);
-      ctx.restore();
-      return;
+      if (!sys || !sys.history.theta.length) {
+        if (panel && i > 0) panel.hidden = true;
+        const prepared = this._prepareChartCanvas(canvas, ctx);
+        if (prepared && i === 0) {
+          const { ctx: drawCtx, width, height } = prepared;
+          drawCtx.fillStyle = 'rgba(8,11,20,0.95)';
+          drawCtx.fillRect(0, 0, width, height);
+          drawCtx.fillStyle = '#9ca3af';
+          drawCtx.font = '12px system-ui';
+          drawCtx.fillText('Keine Daten', 12, height / 2);
+          drawCtx.restore();
+        } else if (prepared) {
+          prepared.ctx.restore();
+        }
+        continue;
+      }
+
+      if (panel) panel.hidden = false;
+      this._drawPhasePlotFor(canvas, ctx, sys, i);
     }
-
-    const times = sys.history.time;
-    const energies = sys.history.energy;
-    const tMin = times[0];
-    const tMax = times[times.length - 1];
-    const timeRange = Math.max(1e-6, tMax - tMin);
-    let eMin = Infinity;
-    let eMax = -Infinity;
-    for (let i = 0; i < energies.length; i++) {
-      const value = energies[i];
-      if (!Number.isFinite(value)) continue;
-      if (value < eMin) eMin = value;
-      if (value > eMax) eMax = value;
-    }
-    if (!Number.isFinite(eMin) || !Number.isFinite(eMax)) {
-      eMin = -1;
-      eMax = 1;
-    }
-    if (Math.abs(eMax - eMin) < 1e-9) {
-      const mid = (eMax + eMin) / 2 || 0;
-      eMin = mid - 1;
-      eMax = mid + 1;
-    } else {
-      const pad = (eMax - eMin) * 0.15;
-      eMin -= pad;
-      eMax += pad;
-    }
-
-    const plotWidth = width - 24;
-    const plotHeight = height - 24;
-    const toX = (t) => 12 + ((t - tMin) / timeRange) * plotWidth;
-    const toY = (val) => height - 12 - ((val - eMin) / (eMax - eMin)) * plotHeight;
-
-    if (eMin < 0 && eMax > 0) {
-      const zeroY = toY(0);
-      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(12, zeroY);
-      ctx.lineTo(width - 12, zeroY);
-      ctx.stroke();
-    }
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#38bdf8';
-    ctx.beginPath();
-    for (let i = 0; i < times.length; i++) {
-      const x = toX(times[i]);
-      const y = toY(energies[i]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    const latest = energies[energies.length - 1];
-    ctx.fillStyle = '#cbd5f5';
-    ctx.font = '11px system-ui';
-    ctx.fillText('E_total ~ ' + latest.toFixed(4), 12, 16);
-    ctx.fillStyle = '#64748b';
-    ctx.fillText('window ~ ' + timeRange.toFixed(2) + ' s', 12, height - 8);
-
-    ctx.restore();
   }
-  _drawPhasePlot() {
-    const prepared = this._prepareChartCanvas(this.phaseCanvas, this.phaseCtx);
+  _drawPhasePlotFor(canvas, ctx, sys, systemIndex) {
+    const prepared = this._prepareChartCanvas(canvas, ctx);
     if (!prepared) return;
-    const { ctx, width, height } = prepared;
-    ctx.fillStyle = 'rgba(8,11,20,0.95)';
-    ctx.fillRect(0, 0, width, height);
-
-    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
-    if (!sys || !sys.history.theta.length) {
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '12px system-ui';
-      ctx.fillText('Keine Daten', 12, height / 2);
-      ctx.restore();
-      return;
-    }
+    const { ctx: drawCtx, width, height } = prepared;
+    drawCtx.fillStyle = 'rgba(8,11,20,0.95)';
+    drawCtx.fillRect(0, 0, width, height);
 
     const thetas = sys.history.theta;
     const omegas = sys.history.omega;
+    if (!thetas.length || !omegas.length) {
+      drawCtx.fillStyle = '#9ca3af';
+      drawCtx.font = '12px system-ui';
+      drawCtx.fillText('Keine Daten', 12, height / 2);
+      drawCtx.restore();
+      return;
+    }
+
     let thetaMin = Infinity;
     let thetaMax = -Infinity;
     let omegaMin = Infinity;
@@ -524,46 +472,46 @@ class PendulumSim {
 
     if (thetaMin < 0 && thetaMax > 0) {
       const zeroX = toX(0);
-      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(zeroX, 12);
-      ctx.lineTo(zeroX, height - 12);
-      ctx.stroke();
+      drawCtx.strokeStyle = 'rgba(148,163,184,0.25)';
+      drawCtx.lineWidth = 1;
+      drawCtx.beginPath();
+      drawCtx.moveTo(zeroX, 12);
+      drawCtx.lineTo(zeroX, height - 12);
+      drawCtx.stroke();
     }
     if (omegaMin < 0 && omegaMax > 0) {
       const zeroY = toY(0);
-      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(12, zeroY);
-      ctx.lineTo(width - 12, zeroY);
-      ctx.stroke();
+      drawCtx.strokeStyle = 'rgba(148,163,184,0.25)';
+      drawCtx.lineWidth = 1;
+      drawCtx.beginPath();
+      drawCtx.moveTo(12, zeroY);
+      drawCtx.lineTo(width - 12, zeroY);
+      drawCtx.stroke();
     }
 
-    ctx.lineWidth = 1.4;
-    ctx.strokeStyle = '#f97316';
-    ctx.beginPath();
+    drawCtx.lineWidth = 1.4;
+    drawCtx.strokeStyle = systemIndex === 0 ? '#f97316' : '#fb7185';
+    drawCtx.beginPath();
     for (let i = 0; i < thetas.length; i++) {
       const x = toX(thetas[i]);
       const y = toY(omegas[i]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      if (i === 0) drawCtx.moveTo(x, y); else drawCtx.lineTo(x, y);
     }
-    ctx.stroke();
+    drawCtx.stroke();
 
     const lastTheta = thetas[thetas.length - 1];
     const lastOmega = omegas[omegas.length - 1];
-    ctx.fillStyle = '#fde68a';
-    ctx.beginPath();
-    ctx.arc(toX(lastTheta), toY(lastOmega), 3, 0, Math.PI * 2);
-    ctx.fill();
+    drawCtx.fillStyle = systemIndex === 0 ? '#fde68a' : '#fbcfe8';
+    drawCtx.beginPath();
+    drawCtx.arc(toX(lastTheta), toY(lastOmega), 3, 0, Math.PI * 2);
+    drawCtx.fill();
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px system-ui';
-    ctx.fillText('theta1 ~ ' + (lastTheta * 180 / Math.PI).toFixed(1) + ' deg', 12, 16);
-    ctx.fillText('omega1 ~ ' + lastOmega.toFixed(2) + ' rad/s', 12, height - 8);
+    drawCtx.fillStyle = '#94a3b8';
+    drawCtx.font = '11px system-ui';
+    drawCtx.fillText('theta1 ~ ' + (lastTheta * 180 / Math.PI).toFixed(1) + ' deg', 12, 16);
+    drawCtx.fillText('omega1 ~ ' + lastOmega.toFixed(2) + ' rad/s', 12, height - 8);
 
-    ctx.restore();
+    drawCtx.restore();
   }
   _computeEnergy(sys) {
     const p = this.params;
@@ -739,6 +687,499 @@ class PendulumSim {
       }
     }
     return best;
+  }
+  _setupLyapunov() {
+    const overlay = document.getElementById('lyapunovOverlay');
+    const closeBtn = document.getElementById('closeLyapunov');
+    const startBtn = document.getElementById('lyapunovStart');
+    const stopBtn = document.getElementById('lyapunovStop');
+    const resetBtn = document.getElementById('lyapunovReset');
+    const deltaInput = document.getElementById('lyapunovDelta');
+    const intervalInput = document.getElementById('lyapunovInterval');
+    const sampleInput = document.getElementById('lyapunovSample');
+    const statusEl = document.getElementById('lyapunovStatus');
+    const lambdaEl = document.getElementById('lyapunovLambda');
+    const lambdaAvgEl = document.getElementById('lyapunovLambdaAvg');
+    const renormEl = document.getElementById('lyapunovRenorm');
+    const timeEl = document.getElementById('lyapunovTime');
+    const distanceEl = document.getElementById('lyapunovDistance');
+    const logCanvas = document.getElementById('lyapunovLogCanvas');
+    const lambdaCanvas = document.getElementById('lyapunovLambdaCanvas');
+    const backdrop = overlay ? overlay.querySelector('.overlay-backdrop') : null;
+
+    this.lyapunov = {
+      overlay,
+      closeBtn,
+      startBtn,
+      stopBtn,
+      resetBtn,
+      deltaInput,
+      intervalInput,
+      sampleInput,
+      statusEl,
+      lambdaEl,
+      lambdaAvgEl,
+      renormEl,
+      timeEl,
+      distanceEl,
+      logCanvas,
+      logCtx: logCanvas ? logCanvas.getContext('2d') : null,
+      lambdaCanvas,
+      lambdaCtx: lambdaCanvas ? lambdaCanvas.getContext('2d') : null,
+      active: false,
+      running: false,
+      ready: false,
+      baseState: null,
+      pertState: null,
+      paramsSnapshot: null,
+      delta0: 0,
+      lastDistance: Number.NaN,
+      sumLn: 0,
+      renormCount: 0,
+      renormAccumTime: 0,
+      lastLambda: Number.NaN,
+      time: 0,
+      sampleTimer: 0,
+      renormTimer: 0,
+      data: { time: [], log: [], lambda: [] },
+    };
+
+    if (closeBtn) closeBtn.addEventListener('click', () => this._closeLyapunov());
+    if (backdrop) backdrop.addEventListener('click', () => this._closeLyapunov());
+    if (overlay) {
+      overlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') this._closeLyapunov();
+      });
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && overlay && !overlay.hidden) {
+        this._closeLyapunov();
+      }
+    });
+    if (startBtn) startBtn.addEventListener('click', () => this._startLyapunov(true));
+    if (stopBtn) stopBtn.addEventListener('click', () => this._stopLyapunov());
+    if (resetBtn) resetBtn.addEventListener('click', () => this._resetLyapunov());
+
+    this._drawLyapunovCharts(true);
+    this._updateLyapunovUI();
+  }
+  _openLyapunov() {
+    const L = this.lyapunov;
+    if (!L || !L.overlay) return;
+    L.overlay.hidden = false;
+    L.overlay.classList.add('active');
+    L.active = true;
+    const focusTarget = L.overlay.querySelector('.overlay-panel') || L.overlay;
+    focusTarget.focus?.();
+    setTimeout(() => focusTarget.focus?.(), 80);
+    this._updateLyapunovUI();
+    this._drawLyapunovCharts();
+  }
+  _closeLyapunov() {
+    const L = this.lyapunov;
+    if (!L || !L.overlay) return;
+    L.overlay.classList.remove('active');
+    L.overlay.hidden = true;
+    L.active = false;
+  }
+  _startLyapunov(autoStart = true) {
+    const L = this.lyapunov;
+    if (!L) return;
+    if (this.mode !== 'double') {
+      this._updateLyapunovUI(undefined, 'Nur im Doppelpendel-Modus verf?gbar');
+      return;
+    }
+    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
+    if (!sys) return;
+    const baseState = sys.state.slice();
+    while (baseState.length < 4) baseState.push(0);
+    const deltaDeg = Number.parseFloat(L.deltaInput?.value ?? '0.05');
+    const fallbackDeg = Number.isFinite(deltaDeg) && deltaDeg > 0 ? deltaDeg : 0.05;
+    const deltaRad = fallbackDeg * Math.PI / 180;
+    const pertState = baseState.slice();
+    pertState[0] += deltaRad;
+    pertState[2] += deltaRad;
+    const normalizedBase = Physics.normalizeAngles(baseState);
+    const normalizedPert = Physics.normalizeAngles(pertState);
+    const diff = this._lyapunovStateDifference(normalizedBase, normalizedPert);
+    let delta0 = this._lyapunovStateNorm(diff);
+    if (!Number.isFinite(delta0) || delta0 <= 0) {
+      delta0 = Math.sqrt(2) * Math.max(deltaRad, 1e-6);
+    }
+    const paramsSnapshot = {
+      m1: sys.m1 != null ? sys.m1 : this.params.m1,
+      m2: sys.m2 != null ? sys.m2 : this.params.m2,
+      l1: this.params.l1,
+      l2: this.params.l2,
+      g: this.params.g,
+      damping: this.params.damping || 0,
+    };
+
+    L.baseState = normalizedBase;
+    L.pertState = normalizedPert;
+    L.paramsSnapshot = paramsSnapshot;
+    L.delta0 = delta0;
+    L.lastDistance = delta0;
+    L.sumLn = 0;
+    L.renormCount = 0;
+    L.renormAccumTime = 0;
+    L.lastLambda = Number.NaN;
+    L.time = 0;
+    L.sampleTimer = 0;
+    L.renormTimer = 0;
+    L.data = { time: [], log: [], lambda: [] };
+    L.running = true;
+    L.ready = true;
+
+    this._drawLyapunovCharts(true);
+    this._updateLyapunovUI(delta0, 'Messung l?uft');
+
+    if (autoStart && !this.running) {
+      this.start();
+    }
+  }
+  _stopLyapunov(message) {
+    const L = this.lyapunov;
+    if (!L) return;
+    L.running = false;
+    this._updateLyapunovUI(undefined, message ?? 'Messung pausiert');
+  }
+  _resetLyapunov() {
+    const L = this.lyapunov;
+    if (!L) return;
+    L.running = false;
+    L.ready = false;
+    L.baseState = null;
+    L.pertState = null;
+    L.paramsSnapshot = null;
+    L.delta0 = 0;
+    L.lastDistance = Number.NaN;
+    L.sumLn = 0;
+    L.renormCount = 0;
+    L.renormAccumTime = 0;
+    L.lastLambda = Number.NaN;
+    L.time = 0;
+    L.sampleTimer = 0;
+    L.renormTimer = 0;
+    L.data = { time: [], log: [], lambda: [] };
+    this._drawLyapunovCharts(true);
+    this._updateLyapunovUI();
+  }
+  _lyapunovStep(dt) {
+    const L = this.lyapunov;
+    if (!L || !L.running) return;
+    if (this.mode !== 'double') {
+      this._stopLyapunov('Messung gestoppt (Einzelpendel)');
+      return;
+    }
+    if (!L.baseState || !L.pertState || !L.paramsSnapshot) return;
+
+    const params = Object.assign({}, L.paramsSnapshot);
+    params.damping = params.damping || 0;
+
+    L.baseState = Physics.normalizeAngles(Physics.rk4Step(L.baseState, dt, params, Physics.doubleDerivatives));
+    L.pertState = Physics.normalizeAngles(Physics.rk4Step(L.pertState, dt, params, Physics.doubleDerivatives));
+
+    const diff = this._lyapunovStateDifference(L.baseState, L.pertState);
+    let distance = this._lyapunovStateNorm(diff);
+    if (!Number.isFinite(distance) || distance <= 1e-18) distance = 1e-18;
+    L.lastDistance = distance;
+
+    const intervalRaw = Number.parseFloat(L.intervalInput?.value ?? '0.12');
+    const renormInterval = Math.max(0.02, Number.isFinite(intervalRaw) ? intervalRaw : 0.12);
+    L.renormTimer += dt;
+    if (L.renormTimer >= renormInterval) {
+      L.renormTimer -= renormInterval;
+      const reference = L.delta0 || 1e-12;
+      const ratio = distance / reference;
+      if (ratio > 0) {
+        const lnRatio = Math.log(ratio);
+        L.sumLn += lnRatio;
+        L.renormCount += 1;
+        L.renormAccumTime += renormInterval;
+        if (L.renormAccumTime > 0) {
+          L.lastLambda = L.sumLn / L.renormAccumTime;
+        }
+      }
+      this._lyapunovRenormalize(diff);
+      distance = L.delta0;
+      L.lastDistance = L.delta0;
+    }
+
+    const sampleRaw = Number.parseFloat(L.sampleInput?.value ?? '40');
+    const sampleInterval = Math.max(0.005, Number.isFinite(sampleRaw) ? sampleRaw / 1000 : 0.04);
+    L.time += dt;
+    L.sampleTimer += dt;
+    if (L.sampleTimer >= sampleInterval) {
+      L.sampleTimer -= sampleInterval;
+      const logValue = Math.log(Math.max(distance, 1e-18));
+      L.data.time.push(L.time);
+      L.data.log.push(logValue);
+      L.data.lambda.push(Number.isFinite(L.lastLambda) ? L.lastLambda : Number.NaN);
+      const maxPoints = 1500;
+      if (L.data.time.length > maxPoints) {
+        L.data.time.shift();
+        L.data.log.shift();
+        L.data.lambda.shift();
+      }
+      this._drawLyapunovCharts();
+    }
+
+    this._updateLyapunovUI(distance);
+  }
+  _lyapunovStateDifference(base, pert) {
+    const wrap = (angle) => this._wrapAngle(angle);
+    const th1 = wrap((pert[0] ?? 0) - (base[0] ?? 0));
+    const w1 = (pert[1] ?? 0) - (base[1] ?? 0);
+    const th2 = wrap((pert[2] ?? 0) - (base[2] ?? 0));
+    const w2 = (pert[3] ?? 0) - (base[3] ?? 0);
+    return [th1, w1, th2, w2];
+  }
+  _lyapunovStateNorm(vec) {
+    const [a0 = 0, a1 = 0, a2 = 0, a3 = 0] = vec;
+    return Math.hypot(a0, a1, a2, a3);
+  }
+  _wrapAngle(angle) {
+    const twoPi = Math.PI * 2;
+    let x = angle % twoPi;
+    if (x > Math.PI) x -= twoPi;
+    if (x < -Math.PI) x += twoPi;
+    return x;
+  }
+  _lyapunovRenormalize(diff) {
+    const L = this.lyapunov;
+    if (!L || !L.baseState) return;
+    const norm = this._lyapunovStateNorm(diff);
+    const target = L.delta0 || 1e-6;
+    let scale = 1;
+    let direction = diff;
+    if (!Number.isFinite(norm) || norm <= 0) {
+      direction = [target, 0, 0, 0];
+      scale = 1;
+    } else {
+      scale = target / norm;
+    }
+    const next = [
+      (L.baseState[0] ?? 0) + direction[0] * scale,
+      (L.baseState[1] ?? 0) + direction[1] * scale,
+      (L.baseState[2] ?? 0) + direction[2] * scale,
+      (L.baseState[3] ?? 0) + direction[3] * scale,
+    ];
+    L.pertState = Physics.normalizeAngles(next);
+  }
+  _drawLyapunovCharts(force = false) {
+    this._drawLyapunovLogChart(force);
+    this._drawLyapunovLambdaChart(force);
+  }
+  _drawLyapunovLogChart(force = false) {
+    const L = this.lyapunov;
+    if (!L || !L.logCanvas || !L.logCtx) return;
+    const prepared = this._prepareChartCanvas(L.logCanvas, L.logCtx);
+    if (!prepared) return;
+    const { ctx, width, height } = prepared;
+    ctx.fillStyle = 'rgba(8,11,20,0.94)';
+    ctx.fillRect(0, 0, width, height);
+
+    const times = L.data.time;
+    const logs = L.data.log;
+    if (!times.length) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px system-ui';
+      ctx.fillText('Noch keine Daten ? Messung starten', 12, height / 2);
+      ctx.restore();
+      return;
+    }
+
+    const tMin = times[0];
+    const tMax = times[times.length - 1];
+    const timeRange = Math.max(1e-6, tMax - tMin);
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (let i = 0; i < logs.length; i++) {
+      const value = logs[i];
+      if (!Number.isFinite(value)) continue;
+      if (value < yMin) yMin = value;
+      if (value > yMax) yMax = value;
+    }
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+      yMin = -25;
+      yMax = -5;
+    }
+    if (Math.abs(yMax - yMin) < 1e-6) {
+      const mid = (yMax + yMin) / 2 || 0;
+      yMin = mid - 1;
+      yMax = mid + 1;
+    } else {
+      const pad = (yMax - yMin) * 0.15;
+      yMin -= pad;
+      yMax += pad;
+    }
+
+    const plotWidth = width - 28;
+    const plotHeight = height - 28;
+    const toX = (t) => 14 + ((t - tMin) / timeRange) * plotWidth;
+    const toY = (val) => height - 14 - ((val - yMin) / (yMax - yMin || 1)) * plotHeight;
+
+    ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+    ctx.lineWidth = 1;
+    const zeroY = toY(0);
+    if (zeroY >= 14 && zeroY <= height - 14) {
+      ctx.beginPath();
+      ctx.moveTo(14, zeroY);
+      ctx.lineTo(width - 14, zeroY);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < times.length; i++) {
+      const x = toX(times[i]);
+      const y = toY(logs[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    const latest = logs[logs.length - 1];
+    ctx.fillStyle = '#cbd5f5';
+    ctx.font = '11px system-ui';
+    ctx.fillText(`ln d(t) zuletzt ? ${latest.toFixed(3)}`, 14, 16);
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(`Fenster ~ ${timeRange.toFixed(2)} s`, 14, height - 10);
+
+    ctx.restore();
+  }
+  _drawLyapunovLambdaChart(force = false) {
+    const L = this.lyapunov;
+    if (!L || !L.lambdaCanvas || !L.lambdaCtx) return;
+    const prepared = this._prepareChartCanvas(L.lambdaCanvas, L.lambdaCtx);
+    if (!prepared) return;
+    const { ctx, width, height } = prepared;
+    ctx.fillStyle = 'rgba(8,11,20,0.94)';
+    ctx.fillRect(0, 0, width, height);
+
+    const times = L.data.time;
+    const lambdaSeries = L.data.lambda;
+    const points = [];
+    for (let i = 0; i < times.length; i++) {
+      const val = lambdaSeries[i];
+      if (!Number.isFinite(val)) continue;
+      points.push({ t: times[i], y: val });
+    }
+
+    if (!points.length) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px system-ui';
+      ctx.fillText('Noch keine ?-Sch?tzung verf?gbar', 12, height / 2);
+      ctx.restore();
+      return;
+    }
+
+    const tMin = points[0].t;
+    const tMax = points[points.length - 1].t;
+    const timeRange = Math.max(1e-6, tMax - tMin);
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const value = points[i].y;
+      if (value < yMin) yMin = value;
+      if (value > yMax) yMax = value;
+    }
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+      yMin = -2;
+      yMax = 2;
+    }
+    if (Math.abs(yMax - yMin) < 1e-6) {
+      const mid = (yMax + yMin) / 2 || 0;
+      yMin = mid - 0.5;
+      yMax = mid + 0.5;
+    } else {
+      const pad = (yMax - yMin) * 0.2;
+      yMin -= pad;
+      yMax += pad;
+    }
+
+    const plotWidth = width - 28;
+    const plotHeight = height - 28;
+    const toX = (t) => 14 + ((t - tMin) / timeRange) * plotWidth;
+    const toY = (val) => height - 14 - ((val - yMin) / (yMax - yMin || 1)) * plotHeight;
+
+    const zeroY = toY(0);
+    if (zeroY >= 14 && zeroY <= height - 14) {
+      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(14, zeroY);
+      ctx.lineTo(width - 14, zeroY);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+      const x = toX(points[i].t);
+      const y = toY(points[i].y);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    const lastPoint = points[points.length - 1];
+    ctx.fillStyle = '#bbf7d0';
+    ctx.beginPath();
+    ctx.arc(toX(lastPoint.t), toY(lastPoint.y), 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#cbd5f5';
+    ctx.font = '11px system-ui';
+    ctx.fillText(`?(t) zuletzt ? ${lastPoint.y.toFixed(4)}`, 14, 16);
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(`Fenster ~ ${timeRange.toFixed(2)} s`, 14, height - 10);
+
+    ctx.restore();
+  }
+  _updateLyapunovUI(distance, overrideStatus) {
+    const L = this.lyapunov;
+    if (!L) return;
+    const statusEl = L.statusEl;
+    if (statusEl) {
+      let statusText = 'Bereit';
+      if (overrideStatus) {
+        statusText = overrideStatus;
+      } else if (L.running && this.running) {
+        statusText = 'Messung l?uft';
+      } else if (L.running && !this.running) {
+        statusText = 'Pausiert (Simulation gestoppt)';
+      } else if (L.ready) {
+        statusText = 'Messung bereit';
+      }
+      statusEl.textContent = statusText;
+    }
+
+    if (L.lambdaEl) {
+      L.lambdaEl.textContent = Number.isFinite(L.lastLambda) ? L.lastLambda.toFixed(4) : 'n/a';
+    }
+
+    if (L.lambdaAvgEl) {
+      const avg = L.renormAccumTime > 0 ? L.sumLn / L.renormAccumTime : Number.NaN;
+      L.lambdaAvgEl.textContent = Number.isFinite(avg) ? avg.toFixed(4) : 'n/a';
+    }
+
+    if (L.renormEl) {
+      L.renormEl.textContent = String(L.renormCount);
+    }
+
+    if (L.timeEl) {
+      L.timeEl.textContent = `${L.time.toFixed(2)} s`;
+    }
+
+    if (L.distanceEl) {
+      const value = distance ?? L.lastDistance;
+      L.distanceEl.textContent = Number.isFinite(value) ? value.toExponential(3) : '?';
+    }
+
+    if (L.startBtn) L.startBtn.disabled = !!L.running;
+    if (L.stopBtn) L.stopBtn.disabled = !L.running;
   }
 }
 
