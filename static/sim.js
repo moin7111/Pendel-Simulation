@@ -163,6 +163,42 @@ class PendulumSim {
     const exportPngBtn = byId('exportPng');
     if (exportPngBtn) exportPngBtn.addEventListener('click', () => this.exportPNG());
 
+    const lyapunovBtn = byId('openLyapunov');
+    const lyapunovOverlay = document.getElementById('lyapunovOverlay');
+    const lyapunovClose = document.getElementById('closeLyapunov');
+    const lyapunovFrame = document.getElementById('lyapunovFrame');
+    const lyapunovPanel = lyapunovOverlay ? lyapunovOverlay.querySelector('.overlay-panel') : null;
+    const lyapunovBackdrop = lyapunovOverlay ? lyapunovOverlay.querySelector('.overlay-backdrop') : null;
+    const openLyapunov = () => {
+      if (!lyapunovOverlay) return;
+      lyapunovOverlay.hidden = false;
+      lyapunovOverlay.classList.add('active');
+      if (lyapunovFrame && !lyapunovFrame.getAttribute('src')) {
+        lyapunovFrame.setAttribute('src', '/logistic');
+      }
+      this.stop();
+      lyapunovPanel?.focus?.();
+      setTimeout(() => lyapunovOverlay?.querySelector('iframe')?.focus?.(), 150);
+    };
+    const closeLyapunov = () => {
+      if (!lyapunovOverlay) return;
+      lyapunovOverlay.classList.remove('active');
+      lyapunovOverlay.hidden = true;
+    };
+    if (lyapunovBtn) lyapunovBtn.addEventListener('click', openLyapunov);
+    if (lyapunovClose) lyapunovClose.addEventListener('click', closeLyapunov);
+    if (lyapunovBackdrop) lyapunovBackdrop.addEventListener('click', closeLyapunov);
+    if (lyapunovOverlay) {
+      lyapunovOverlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeLyapunov();
+      });
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && lyapunovOverlay && !lyapunovOverlay.hidden) {
+        closeLyapunov();
+      }
+    });
+
     // speed factor
     const speedSlider = byId('speedFactor');
     const speedNum = byId('speedFactorNum');

@@ -17,6 +17,7 @@
         <button id="toggleTrail" class="btn">Spur an/aus</button>
         <button id="exportCsv" class="btn">Export CSV</button>
         <button id="exportPng" class="btn">Screenshot</button>
+        <button id="openLyapunov" class="btn">Lyapunov Explorer</button>
         <button id="resetBtn" class="btn">Reset</button>
         <button id="startBtn" class="btn primary">Start</button>
         <button id="stopBtn" class="btn">Stopp</button>
@@ -75,6 +76,20 @@
         </div>
       </aside>
     </main>
+
+    <div id="lyapunovOverlay" class="lyapunov-overlay" hidden>
+      <div class="overlay-backdrop" aria-hidden="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="lyapunovTitle" tabindex="-1">
+        <header class="overlay-header">
+          <div>
+            <h2 id="lyapunovTitle">Lyapunov Explorer</h2>
+            <p class="muted small">React + WebWorker UI im Overlay</p>
+          </div>
+          <button type="button" id="closeLyapunov" class="icon-btn" aria-label="Lyapunov Explorer schließen">×</button>
+        </header>
+        <iframe id="lyapunovFrame" title="Lyapunov Explorer" loading="lazy"></iframe>
+      </section>
+    </div>
 
     <script src="/static/sim.js"></script>
   </body>
