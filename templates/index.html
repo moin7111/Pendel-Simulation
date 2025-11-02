@@ -15,6 +15,8 @@
         <button id="modeDouble" class="btn">Doppelpendel</button>
         <button id="modeSingle" class="btn">Einzelpendel</button>
         <button id="toggleTrail" class="btn">Spur an/aus</button>
+        <button id="exportCsv" class="btn">Export CSV</button>
+        <button id="exportPng" class="btn">Screenshot</button>
         <button id="resetBtn" class="btn">Reset</button>
         <button id="startBtn" class="btn primary">Start</button>
         <button id="stopBtn" class="btn">Stopp</button>
@@ -25,6 +27,16 @@
       <section class="canvas-wrap">
         <canvas id="pendulumCanvas" width="900" height="600"></canvas>
         <div class="time-display">Zeit: <span id="timeValue">0.00</span> s</div>
+        <div class="mini-panels">
+          <div class="mini-chart" aria-live="polite">
+            <header>Gesamtenergie</header>
+            <canvas id="energyCanvas" width="260" height="140" aria-label="Gesamtenergie in Abhängigkeit von der Zeit"></canvas>
+          </div>
+          <div class="mini-chart" aria-live="polite">
+            <header>Phase theta1-omega1</header>
+            <canvas id="phaseCanvas" width="260" height="140" aria-label="Phasenraum der ersten Masse"></canvas>
+          </div>
+        </div>
       </section>
       <aside class="controls">
         <div class="control-group">
