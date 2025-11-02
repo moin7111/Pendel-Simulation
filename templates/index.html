@@ -29,13 +29,23 @@
         <canvas id="pendulumCanvas" width="900" height="600"></canvas>
         <div class="time-display">Zeit: <span id="timeValue">0.00</span> s</div>
         <div class="mini-panels">
-          <div class="mini-chart" aria-live="polite">
-            <header>Gesamtenergie</header>
-            <canvas id="energyCanvas" width="260" height="140" aria-label="Gesamtenergie in Abhängigkeit von der Zeit"></canvas>
+          <div class="mini-chart" aria-live="polite" id="phasePanel0">
+            <header>Phase θ₁–ω₁ (Pendel 1)</header>
+            <canvas
+              id="phaseCanvas0"
+              width="260"
+              height="140"
+              aria-label="Phasenraum der ersten Masse für Pendel 1"
+            ></canvas>
           </div>
-          <div class="mini-chart" aria-live="polite">
-            <header>Phase theta1-omega1</header>
-            <canvas id="phaseCanvas" width="260" height="140" aria-label="Phasenraum der ersten Masse"></canvas>
+          <div class="mini-chart" aria-live="polite" id="phasePanel1" hidden>
+            <header>Phase θ₁–ω₁ (Pendel 2)</header>
+            <canvas
+              id="phaseCanvas1"
+              width="260"
+              height="140"
+              aria-label="Phasenraum der ersten Masse für Pendel 2"
+            ></canvas>
           </div>
         </div>
       </section>

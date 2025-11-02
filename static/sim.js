@@ -99,10 +99,12 @@ class PendulumSim {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.energyCanvas = document.getElementById('energyCanvas');
-    this.energyCtx = this.energyCanvas ? this.energyCanvas.getContext('2d') : null;
-    this.phaseCanvas = document.getElementById('phaseCanvas');
-    this.phaseCtx = this.phaseCanvas ? this.phaseCanvas.getContext('2d') : null;
+    this.phasePanels = [
+      document.getElementById('phasePanel0'),
+      document.getElementById('phasePanel1'),
+    ];
+    this.phaseCanvases = this.phasePanels.map((panel) => panel ? panel.querySelector('canvas') : null);
+    this.phaseContexts = this.phaseCanvases.map((canvas) => (canvas ? canvas.getContext('2d') : null));
     this.params = { m1: 1.0, m2: 1.0, l1: 1.0, l2: 1.0, g: 9.81, damping: 0.0 };
     this.scale = 150; // px per meter
     this.mode = 'double';
@@ -117,7 +119,7 @@ class PendulumSim {
     this.systems = [makeSystem(0, '#2563EB')];
     this.activeSystemIndex = 0;
     this._lastGeom = {};
-    this.maxHistoryPoints = 1200;
+    this.maxHistoryPoints = Infinity;
     this.historySampleInterval = 0.02; // seconds between history samples
     this._historyAccumulator = 0;
     this.exportLog = [];
@@ -165,7 +167,7 @@ class PendulumSim {
       if (this.lyapunov?.running) {
         this._stopLyapunov('Messung gestoppt (Einzelpendel)');
       } else if (this.lyapunov?.ready) {
-        this._updateLyapunovUI(undefined, 'Nur im Doppelpendel-Modus verf?gbar');
+        this._updateLyapunovUI(undefined, 'Nur im Doppelpendel-Modus verfuegbar');
       }
       this._recordSnapshot(0, true);
       this._draw();
@@ -338,9 +340,10 @@ class PendulumSim {
       // trail per system
       if (this.trailEnabled) {
         sys.trail.push([x2, y2]);
-        if (!this.persistTrail && sys.trail.length > this.maxTrail) sys.trail.shift();
-        for (let t = 1; t < sys.trail.length; t++) {
-          const alpha = 0.25 + 0.75 * (t / sys.trail.length);
+        const trailStart = this.persistTrail ? 0 : Math.max(0, sys.trail.length - this.maxTrail);
+        const visibleLength = Math.max(1, sys.trail.length - trailStart);
+        for (let t = trailStart + 1; t < sys.trail.length; t++) {
+          const alpha = 0.25 + 0.75 * ((t - trailStart) / visibleLength);
           const { r, g, b } = sys.color.trailRgb;
           ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
           ctx.lineWidth = 2;
@@ -368,8 +371,7 @@ class PendulumSim {
     this._drawAuxiliaryCharts();
   }
   _drawAuxiliaryCharts() {
-    if (this.energyCtx) this._drawEnergyChart();
-    if (this.phaseCtx) this._drawPhasePlot();
+    this._drawPhasePlots();
   }
   _prepareChartCanvas(canvas, ctx) {
     if (!canvas || !ctx) return null;
@@ -388,101 +390,53 @@ class PendulumSim {
     ctx.clearRect(0, 0, width, height);
     return { ctx, width, height };
   }
-  _drawEnergyChart() {
-    const prepared = this._prepareChartCanvas(this.energyCanvas, this.energyCtx);
-    if (!prepared) return;
-    const { ctx, width, height } = prepared;
-    ctx.fillStyle = 'rgba(8,11,20,0.95)';
-    ctx.fillRect(0, 0, width, height);
+  _drawPhasePlots() {
+    if (!this.phaseCanvases || !this.phaseContexts) return;
+    for (let i = 0; i < this.phaseCanvases.length; i++) {
+      const canvas = this.phaseCanvases[i];
+      const ctx = this.phaseContexts[i];
+      if (!canvas || !ctx) continue;
+      const panel = this.phasePanels[i];
+      const sys = this.systems[i];
 
-    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
-    if (!sys || !sys.history.time.length) {
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '12px system-ui';
-      ctx.fillText('Keine Daten', 12, height / 2);
-      ctx.restore();
-      return;
+      if (!sys || !sys.history.theta.length) {
+        if (panel && i > 0) panel.hidden = true;
+        const prepared = this._prepareChartCanvas(canvas, ctx);
+        if (prepared && i === 0) {
+          const { ctx: drawCtx, width, height } = prepared;
+          drawCtx.fillStyle = 'rgba(8,11,20,0.95)';
+          drawCtx.fillRect(0, 0, width, height);
+          drawCtx.fillStyle = '#9ca3af';
+          drawCtx.font = '12px system-ui';
+          drawCtx.fillText('Keine Daten', 12, height / 2);
+          drawCtx.restore();
+        } else if (prepared) {
+          prepared.ctx.restore();
+        }
+        continue;
+      }
+
+      if (panel) panel.hidden = false;
+      this._drawPhasePlotFor(canvas, ctx, sys, i);
     }
-
-    const times = sys.history.time;
-    const energies = sys.history.energy;
-    const tMin = times[0];
-    const tMax = times[times.length - 1];
-    const timeRange = Math.max(1e-6, tMax - tMin);
-    let eMin = Infinity;
-    let eMax = -Infinity;
-    for (let i = 0; i < energies.length; i++) {
-      const value = energies[i];
-      if (!Number.isFinite(value)) continue;
-      if (value < eMin) eMin = value;
-      if (value > eMax) eMax = value;
-    }
-    if (!Number.isFinite(eMin) || !Number.isFinite(eMax)) {
-      eMin = -1;
-      eMax = 1;
-    }
-    if (Math.abs(eMax - eMin) < 1e-9) {
-      const mid = (eMax + eMin) / 2 || 0;
-      eMin = mid - 1;
-      eMax = mid + 1;
-    } else {
-      const pad = (eMax - eMin) * 0.15;
-      eMin -= pad;
-      eMax += pad;
-    }
-
-    const plotWidth = width - 24;
-    const plotHeight = height - 24;
-    const toX = (t) => 12 + ((t - tMin) / timeRange) * plotWidth;
-    const toY = (val) => height - 12 - ((val - eMin) / (eMax - eMin)) * plotHeight;
-
-    if (eMin < 0 && eMax > 0) {
-      const zeroY = toY(0);
-      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(12, zeroY);
-      ctx.lineTo(width - 12, zeroY);
-      ctx.stroke();
-    }
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#38bdf8';
-    ctx.beginPath();
-    for (let i = 0; i < times.length; i++) {
-      const x = toX(times[i]);
-      const y = toY(energies[i]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    const latest = energies[energies.length - 1];
-    ctx.fillStyle = '#cbd5f5';
-    ctx.font = '11px system-ui';
-    ctx.fillText('E_total ~ ' + latest.toFixed(4), 12, 16);
-    ctx.fillStyle = '#64748b';
-    ctx.fillText('window ~ ' + timeRange.toFixed(2) + ' s', 12, height - 8);
-
-    ctx.restore();
   }
-  _drawPhasePlot() {
-    const prepared = this._prepareChartCanvas(this.phaseCanvas, this.phaseCtx);
+  _drawPhasePlotFor(canvas, ctx, sys, systemIndex) {
+    const prepared = this._prepareChartCanvas(canvas, ctx);
     if (!prepared) return;
-    const { ctx, width, height } = prepared;
-    ctx.fillStyle = 'rgba(8,11,20,0.95)';
-    ctx.fillRect(0, 0, width, height);
-
-    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
-    if (!sys || !sys.history.theta.length) {
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '12px system-ui';
-      ctx.fillText('Keine Daten', 12, height / 2);
-      ctx.restore();
-      return;
-    }
+    const { ctx: drawCtx, width, height } = prepared;
+    drawCtx.fillStyle = 'rgba(8,11,20,0.95)';
+    drawCtx.fillRect(0, 0, width, height);
 
     const thetas = sys.history.theta;
     const omegas = sys.history.omega;
+    if (!thetas.length || !omegas.length) {
+      drawCtx.fillStyle = '#9ca3af';
+      drawCtx.font = '12px system-ui';
+      drawCtx.fillText('Keine Daten', 12, height / 2);
+      drawCtx.restore();
+      return;
+    }
+
     let thetaMin = Infinity;
     let thetaMax = -Infinity;
     let omegaMin = Infinity;
@@ -518,46 +472,46 @@ class PendulumSim {
 
     if (thetaMin < 0 && thetaMax > 0) {
       const zeroX = toX(0);
-      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(zeroX, 12);
-      ctx.lineTo(zeroX, height - 12);
-      ctx.stroke();
+      drawCtx.strokeStyle = 'rgba(148,163,184,0.25)';
+      drawCtx.lineWidth = 1;
+      drawCtx.beginPath();
+      drawCtx.moveTo(zeroX, 12);
+      drawCtx.lineTo(zeroX, height - 12);
+      drawCtx.stroke();
     }
     if (omegaMin < 0 && omegaMax > 0) {
       const zeroY = toY(0);
-      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(12, zeroY);
-      ctx.lineTo(width - 12, zeroY);
-      ctx.stroke();
+      drawCtx.strokeStyle = 'rgba(148,163,184,0.25)';
+      drawCtx.lineWidth = 1;
+      drawCtx.beginPath();
+      drawCtx.moveTo(12, zeroY);
+      drawCtx.lineTo(width - 12, zeroY);
+      drawCtx.stroke();
     }
 
-    ctx.lineWidth = 1.4;
-    ctx.strokeStyle = '#f97316';
-    ctx.beginPath();
+    drawCtx.lineWidth = 1.4;
+    drawCtx.strokeStyle = systemIndex === 0 ? '#f97316' : '#fb7185';
+    drawCtx.beginPath();
     for (let i = 0; i < thetas.length; i++) {
       const x = toX(thetas[i]);
       const y = toY(omegas[i]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      if (i === 0) drawCtx.moveTo(x, y); else drawCtx.lineTo(x, y);
     }
-    ctx.stroke();
+    drawCtx.stroke();
 
     const lastTheta = thetas[thetas.length - 1];
     const lastOmega = omegas[omegas.length - 1];
-    ctx.fillStyle = '#fde68a';
-    ctx.beginPath();
-    ctx.arc(toX(lastTheta), toY(lastOmega), 3, 0, Math.PI * 2);
-    ctx.fill();
+    drawCtx.fillStyle = systemIndex === 0 ? '#fde68a' : '#fbcfe8';
+    drawCtx.beginPath();
+    drawCtx.arc(toX(lastTheta), toY(lastOmega), 3, 0, Math.PI * 2);
+    drawCtx.fill();
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px system-ui';
-    ctx.fillText('theta1 ~ ' + (lastTheta * 180 / Math.PI).toFixed(1) + ' deg', 12, 16);
-    ctx.fillText('omega1 ~ ' + lastOmega.toFixed(2) + ' rad/s', 12, height - 8);
+    drawCtx.fillStyle = '#94a3b8';
+    drawCtx.font = '11px system-ui';
+    drawCtx.fillText('theta1 ~ ' + (lastTheta * 180 / Math.PI).toFixed(1) + ' deg', 12, 16);
+    drawCtx.fillText('omega1 ~ ' + lastOmega.toFixed(2) + ' rad/s', 12, height - 8);
 
-    ctx.restore();
+    drawCtx.restore();
   }
   _computeEnergy(sys) {
     const p = this.params;
