@@ -76,6 +76,12 @@ function makeSystem(id, baseColor) {
       bob1: baseColor,
       bob2: baseColor,
       trailRgb: baseColor.startsWith('#') ? hexToRgb(baseColor) : { r: 51, g: 102, b: 204 }
+    },
+    history: {
+      time: [],
+      energy: [],
+      theta: [],
+      omega: []
     }
   };
 }
@@ -93,6 +99,10 @@ class PendulumSim {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.energyCanvas = document.getElementById('energyCanvas');
+    this.energyCtx = this.energyCanvas ? this.energyCanvas.getContext('2d') : null;
+    this.phaseCanvas = document.getElementById('phaseCanvas');
+    this.phaseCtx = this.phaseCanvas ? this.phaseCanvas.getContext('2d') : null;
     this.params = { m1: 1.0, m2: 1.0, l1: 1.0, l2: 1.0, g: 9.81, damping: 0.0 };
     this.scale = 150; // px per meter
     this.mode = 'double';
@@ -107,8 +117,14 @@ class PendulumSim {
     this.systems = [makeSystem(0, '#2563EB')];
     this.activeSystemIndex = 0;
     this._lastGeom = {};
+    this.maxHistoryPoints = 1200;
+    this.historySampleInterval = 0.02; // seconds between history samples
+    this._historyAccumulator = 0;
+    this.exportLog = [];
+    this._clearHistories();
     this._bindInputs();
     this._syncInputsFromActiveSystem();
+    this._recordSnapshot(0, true);
     this._draw();
   }
   _bindInputs() {
@@ -135,12 +151,53 @@ class PendulumSim {
     byId('w2').addEventListener('input', (e) => { const sys = this.systems[this.activeSystemIndex]; sys.state[3] = parseFloat(e.target.value) || 0; this._draw(); });
 
     // modes apply globally
-    byId('modeDouble').addEventListener('click', () => { this.mode = 'double'; this._draw(); });
-    byId('modeSingle').addEventListener('click', () => { this.mode = 'single'; this._draw(); });
+    byId('modeDouble').addEventListener('click', () => { this.mode = 'double'; this._recordSnapshot(0, true); this._draw(); });
+    byId('modeSingle').addEventListener('click', () => { this.mode = 'single'; this._recordSnapshot(0, true); this._draw(); });
 
     // trails
     byId('toggleTrail').addEventListener('click', () => { this.trailEnabled = !this.trailEnabled; /* do not clear to keep persistent until reset */ this._draw(); });
     const persistEl = byId('persistTrail'); if (persistEl) { persistEl.addEventListener('change', (e) => { this.persistTrail = !!e.target.checked; }); }
+
+    const exportCsvBtn = byId('exportCsv');
+    if (exportCsvBtn) exportCsvBtn.addEventListener('click', () => this.exportCSV());
+    const exportPngBtn = byId('exportPng');
+    if (exportPngBtn) exportPngBtn.addEventListener('click', () => this.exportPNG());
+
+    const lyapunovBtn = byId('openLyapunov');
+    const lyapunovOverlay = document.getElementById('lyapunovOverlay');
+    const lyapunovClose = document.getElementById('closeLyapunov');
+    const lyapunovFrame = document.getElementById('lyapunovFrame');
+    const lyapunovPanel = lyapunovOverlay ? lyapunovOverlay.querySelector('.overlay-panel') : null;
+    const lyapunovBackdrop = lyapunovOverlay ? lyapunovOverlay.querySelector('.overlay-backdrop') : null;
+    const openLyapunov = () => {
+      if (!lyapunovOverlay) return;
+      lyapunovOverlay.hidden = false;
+      lyapunovOverlay.classList.add('active');
+      if (lyapunovFrame && !lyapunovFrame.getAttribute('src')) {
+        lyapunovFrame.setAttribute('src', '/logistic');
+      }
+      this.stop();
+      lyapunovPanel?.focus?.();
+      setTimeout(() => lyapunovOverlay?.querySelector('iframe')?.focus?.(), 150);
+    };
+    const closeLyapunov = () => {
+      if (!lyapunovOverlay) return;
+      lyapunovOverlay.classList.remove('active');
+      lyapunovOverlay.hidden = true;
+    };
+    if (lyapunovBtn) lyapunovBtn.addEventListener('click', openLyapunov);
+    if (lyapunovClose) lyapunovClose.addEventListener('click', closeLyapunov);
+    if (lyapunovBackdrop) lyapunovBackdrop.addEventListener('click', closeLyapunov);
+    if (lyapunovOverlay) {
+      lyapunovOverlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeLyapunov();
+      });
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && lyapunovOverlay && !lyapunovOverlay.hidden) {
+        closeLyapunov();
+      }
+    });
 
     // speed factor
     const speedSlider = byId('speedFactor');
@@ -169,6 +226,7 @@ class PendulumSim {
       this.systems.push(sys);
       if (activeSel) { activeSel.value = '1'; this.activeSystemIndex = 1; }
       this._syncInputsFromActiveSystem();
+      this._recordSnapshot(0, true);
       this._draw();
     });
     const removeBtn = byId('removePendulum');
@@ -177,6 +235,7 @@ class PendulumSim {
       this.systems = [this.systems[0]];
       if (activeSel) { activeSel.value = '0'; this.activeSystemIndex = 0; }
       this._syncInputsFromActiveSystem();
+      this._recordSnapshot(0, true);
       this._draw();
     });
 
@@ -226,6 +285,8 @@ class PendulumSim {
     // clear trails
     this.systems.forEach((sys) => { sys.trail = []; sys.state = [sys.initialAngles[0], 0, sys.initialAngles[1], 0]; });
     this.time = 0;
+    this._clearHistories();
+    this._recordSnapshot(0, true);
     this._draw();
   }
   _step(dt) {
@@ -239,6 +300,7 @@ class PendulumSim {
       sys.state = Physics.normalizeAngles(sys.state);
     }
     this.time += dt;
+    this._recordSnapshot(dt);
     this._draw();
   }
   _draw() {
@@ -309,6 +371,318 @@ class PendulumSim {
     ctx.fillStyle = '#e5e7eb'; circle(ctx, originX, originY, 4);
     // time
     document.getElementById('timeValue').textContent = this.time.toFixed(2);
+    this._drawAuxiliaryCharts();
+  }
+  _drawAuxiliaryCharts() {
+    if (this.energyCtx) this._drawEnergyChart();
+    if (this.phaseCtx) this._drawPhasePlot();
+  }
+  _prepareChartCanvas(canvas, ctx) {
+    if (!canvas || !ctx) return null;
+    const width = canvas.clientWidth || canvas.width;
+    const height = canvas.clientHeight || canvas.height;
+    if (!width || !height) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const targetWidth = Math.max(1, Math.round(width * dpr));
+    const targetHeight = Math.max(1, Math.round(height * dpr));
+    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+    }
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+    return { ctx, width, height };
+  }
+  _drawEnergyChart() {
+    const prepared = this._prepareChartCanvas(this.energyCanvas, this.energyCtx);
+    if (!prepared) return;
+    const { ctx, width, height } = prepared;
+    ctx.fillStyle = 'rgba(8,11,20,0.95)';
+    ctx.fillRect(0, 0, width, height);
+
+    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
+    if (!sys || !sys.history.time.length) {
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '12px system-ui';
+      ctx.fillText('Keine Daten', 12, height / 2);
+      ctx.restore();
+      return;
+    }
+
+    const times = sys.history.time;
+    const energies = sys.history.energy;
+    const tMin = times[0];
+    const tMax = times[times.length - 1];
+    const timeRange = Math.max(1e-6, tMax - tMin);
+    let eMin = Infinity;
+    let eMax = -Infinity;
+    for (let i = 0; i < energies.length; i++) {
+      const value = energies[i];
+      if (!Number.isFinite(value)) continue;
+      if (value < eMin) eMin = value;
+      if (value > eMax) eMax = value;
+    }
+    if (!Number.isFinite(eMin) || !Number.isFinite(eMax)) {
+      eMin = -1;
+      eMax = 1;
+    }
+    if (Math.abs(eMax - eMin) < 1e-9) {
+      const mid = (eMax + eMin) / 2 || 0;
+      eMin = mid - 1;
+      eMax = mid + 1;
+    } else {
+      const pad = (eMax - eMin) * 0.15;
+      eMin -= pad;
+      eMax += pad;
+    }
+
+    const plotWidth = width - 24;
+    const plotHeight = height - 24;
+    const toX = (t) => 12 + ((t - tMin) / timeRange) * plotWidth;
+    const toY = (val) => height - 12 - ((val - eMin) / (eMax - eMin)) * plotHeight;
+
+    if (eMin < 0 && eMax > 0) {
+      const zeroY = toY(0);
+      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(12, zeroY);
+      ctx.lineTo(width - 12, zeroY);
+      ctx.stroke();
+    }
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.beginPath();
+    for (let i = 0; i < times.length; i++) {
+      const x = toX(times[i]);
+      const y = toY(energies[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    const latest = energies[energies.length - 1];
+    ctx.fillStyle = '#cbd5f5';
+    ctx.font = '11px system-ui';
+    ctx.fillText('E_total ~ ' + latest.toFixed(4), 12, 16);
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('window ~ ' + timeRange.toFixed(2) + ' s', 12, height - 8);
+
+    ctx.restore();
+  }
+  _drawPhasePlot() {
+    const prepared = this._prepareChartCanvas(this.phaseCanvas, this.phaseCtx);
+    if (!prepared) return;
+    const { ctx, width, height } = prepared;
+    ctx.fillStyle = 'rgba(8,11,20,0.95)';
+    ctx.fillRect(0, 0, width, height);
+
+    const sys = this.systems[this.activeSystemIndex] || this.systems[0];
+    if (!sys || !sys.history.theta.length) {
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '12px system-ui';
+      ctx.fillText('Keine Daten', 12, height / 2);
+      ctx.restore();
+      return;
+    }
+
+    const thetas = sys.history.theta;
+    const omegas = sys.history.omega;
+    let thetaMin = Infinity;
+    let thetaMax = -Infinity;
+    let omegaMin = Infinity;
+    let omegaMax = -Infinity;
+    for (let i = 0; i < thetas.length; i++) {
+      const th = thetas[i];
+      const om = omegas[i];
+      if (Number.isFinite(th)) {
+        if (th < thetaMin) thetaMin = th;
+        if (th > thetaMax) thetaMax = th;
+      }
+      if (Number.isFinite(om)) {
+        if (om < omegaMin) omegaMin = om;
+        if (om > omegaMax) omegaMax = om;
+      }
+    }
+    if (!Number.isFinite(thetaMin) || !Number.isFinite(thetaMax)) { thetaMin = -Math.PI; thetaMax = Math.PI; }
+    if (!Number.isFinite(omegaMin) || !Number.isFinite(omegaMax)) { omegaMin = -5; omegaMax = 5; }
+
+    const thetaRange = Math.max(0.1, thetaMax - thetaMin);
+    const omegaRange = Math.max(0.1, omegaMax - omegaMin);
+    const thetaPad = thetaRange * 0.1 + 0.05;
+    const omegaPad = omegaRange * 0.1 + 0.05;
+    thetaMin -= thetaPad;
+    thetaMax += thetaPad;
+    omegaMin -= omegaPad;
+    omegaMax += omegaPad;
+
+    const plotWidth = width - 24;
+    const plotHeight = height - 24;
+    const toX = (theta) => 12 + ((theta - thetaMin) / (thetaMax - thetaMin || 1)) * plotWidth;
+    const toY = (omega) => height - 12 - ((omega - omegaMin) / (omegaMax - omegaMin || 1)) * plotHeight;
+
+    if (thetaMin < 0 && thetaMax > 0) {
+      const zeroX = toX(0);
+      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(zeroX, 12);
+      ctx.lineTo(zeroX, height - 12);
+      ctx.stroke();
+    }
+    if (omegaMin < 0 && omegaMax > 0) {
+      const zeroY = toY(0);
+      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(12, zeroY);
+      ctx.lineTo(width - 12, zeroY);
+      ctx.stroke();
+    }
+
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = '#f97316';
+    ctx.beginPath();
+    for (let i = 0; i < thetas.length; i++) {
+      const x = toX(thetas[i]);
+      const y = toY(omegas[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    const lastTheta = thetas[thetas.length - 1];
+    const lastOmega = omegas[omegas.length - 1];
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath();
+    ctx.arc(toX(lastTheta), toY(lastOmega), 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px system-ui';
+    ctx.fillText('theta1 ~ ' + (lastTheta * 180 / Math.PI).toFixed(1) + ' deg', 12, 16);
+    ctx.fillText('omega1 ~ ' + lastOmega.toFixed(2) + ' rad/s', 12, height - 8);
+
+    ctx.restore();
+  }
+  _computeEnergy(sys) {
+    const p = this.params;
+    const g = p.g;
+    const l1 = p.l1;
+    const l2 = p.l2;
+    const m1 = sys.m1 != null ? sys.m1 : p.m1;
+    const m2 = sys.m2 != null ? sys.m2 : p.m2;
+    const [th1, w1, th2 = 0, w2 = 0] = sys.state;
+    if (this.mode === 'single') {
+      const kinetic = 0.5 * m1 * l1 * l1 * w1 * w1;
+      const potential = -m1 * g * l1 * Math.cos(th1);
+      return kinetic + potential;
+    }
+    const kinetic = 0.5 * m1 * l1 * l1 * w1 * w1 +
+      0.5 * m2 * (l1 * l1 * w1 * w1 + l2 * l2 * w2 * w2 + 2 * l1 * l2 * w1 * w2 * Math.cos(th1 - th2));
+    const potential = -(m1 + m2) * g * l1 * Math.cos(th1) - m2 * g * l2 * Math.cos(th2);
+    return kinetic + potential;
+  }
+  _clearHistories() {
+    this.exportLog = [];
+    this._historyAccumulator = 0;
+    this.systems.forEach((sys) => {
+      sys.history = { time: [], energy: [], theta: [], omega: [] };
+    });
+  }
+  _recordSnapshot(dt = 0, force = false) {
+    if (!this.systems.length) return;
+    if (!force) {
+      this._historyAccumulator += dt;
+      if (this._historyAccumulator + 1e-6 < this.historySampleInterval) return;
+      this._historyAccumulator -= this.historySampleInterval;
+    } else {
+      this._historyAccumulator = 0;
+    }
+
+    const timestamp = this.time;
+    const mode = this.mode;
+    const l1 = this.params.l1;
+    const l2 = this.params.l2;
+    const g = this.params.g;
+    const defaultM1 = this.params.m1;
+    const defaultM2 = this.params.m2;
+
+    for (let i = 0; i < this.systems.length; i++) {
+      const sys = this.systems[i];
+      const energy = this._computeEnergy(sys);
+      const [theta1, omega1, theta2 = 0, omega2 = 0] = sys.state;
+      const history = sys.history;
+      history.time.push(timestamp);
+      history.energy.push(energy);
+      history.theta.push(theta1);
+      history.omega.push(omega1);
+      if (history.time.length > this.maxHistoryPoints) {
+        history.time.shift();
+        history.energy.shift();
+        history.theta.shift();
+        history.omega.shift();
+      }
+      this.exportLog.push({
+        time: timestamp,
+        systemId: sys.id,
+        mode,
+        theta1,
+        omega1,
+        theta2: mode === 'double' ? theta2 : null,
+        omega2: mode === 'double' ? omega2 : null,
+        energy,
+        m1: sys.m1 != null ? sys.m1 : defaultM1,
+        m2: mode === 'double' ? (sys.m2 != null ? sys.m2 : defaultM2) : null,
+        l1,
+        l2: mode === 'double' ? l2 : null,
+        g,
+      });
+    }
+  }
+  exportCSV() {
+    if (!this.exportLog.length) return;
+    const header = 'time,system_id,mode,theta1_rad,theta1_deg,omega1,theta2_rad,theta2_deg,omega2,energy,m1,m2,l1,l2,g\n';
+    const rows = this.exportLog.map((entry) => {
+      const theta1Deg = entry.theta1 * 180 / Math.PI;
+      const theta2Deg = entry.theta2 != null ? entry.theta2 * 180 / Math.PI : null;
+      const fields = [
+        entry.time.toFixed(5),
+        entry.systemId,
+        entry.mode,
+        entry.theta1.toFixed(6),
+        theta1Deg.toFixed(3),
+        entry.omega1.toFixed(6),
+        entry.theta2 != null ? entry.theta2.toFixed(6) : '',
+        entry.theta2 != null && Number.isFinite(theta2Deg) ? theta2Deg.toFixed(3) : '',
+        entry.omega2 != null ? entry.omega2.toFixed(6) : '',
+        entry.energy.toFixed(6),
+        entry.m1 != null ? entry.m1 : '',
+        entry.m2 != null ? entry.m2 : '',
+        entry.l1,
+        entry.l2 != null ? entry.l2 : '',
+        entry.g,
+      ];
+      return fields.join(',');
+    }).join('\n');
+
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const modeLabel = this.mode === 'double' ? 'double' : 'single';
+    link.download = `pendulum-${modeLabel}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  exportPNG() {
+    if (!this.canvas) return;
+    const url = this.canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    const modeLabel = this.mode === 'double' ? 'double' : 'single';
+    link.href = url;
+    link.download = `pendulum-${modeLabel}.png`;
+    link.click();
   }
   _onPointerDown(e) {
     this._dragging = this._hitTest(e);
