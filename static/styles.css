@@ -7,7 +7,9 @@ nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn { background: #1f2937; color: var(--text); border: 1px solid #374151; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
 .btn:hover { background: #2b3546; }
 .btn.primary { background: var(--primary); border-color: #1e40af; }
-.app-main { display: grid; grid-template-columns: 1fr 320px; gap: 12px; padding: 12px; height: calc(100% - 58px); }
+.app-main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; padding: 12px; height: calc(100% - 58px); }
+.visualization-column { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; min-height: 0; }
+.visualization-column .canvas-wrap { min-height: 0; }
 .canvas-wrap { position: relative; background: #0b1220; border: 1px solid #1f2937; border-radius: 10px; padding: 8px; display: flex; align-items: center; justify-content: center; }
 canvas { background: #0a0f1a; width: 100%; height: 100%; max-height: 100%; border-radius: 6px; border: 1px solid #1f2937; }
 .time-display { position: absolute; left: 16px; bottom: 10px; color: var(--muted); background: rgba(0,0,0,.3); padding: 4px 8px; border-radius: 6px; font-variant-numeric: tabular-nums; }
@@ -15,6 +17,26 @@ canvas { background: #0a0f1a; width: 100%; height: 100%; max-height: 100%; borde
 .mini-chart { background: rgba(17,24,39,0.88); border: 1px solid rgba(148,163,184,0.2); border-radius: 10px; padding: 8px 10px 10px; display: grid; gap: 6px; box-shadow: 0 8px 18px rgba(15,23,42,0.4); }
 .mini-chart header { font-size: 13px; font-weight: 600; color: #f8fafc; letter-spacing: .02em; }
 .mini-chart canvas { width: 100%; height: 120px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.18); background: rgba(8,11,20,0.95); }
+.measurement-panel { background: #0b1220; border: 1px solid #1f2937; border-radius: 10px; padding: 12px; display: grid; gap: 12px; min-height: 0; box-shadow: inset 0 0 0 1px rgba(15,23,42,0.25); }
+.measurement-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.measurement-header h2 { margin: 0; font-size: 16px; letter-spacing: .02em; }
+.measurement-count { background: rgba(37,99,235,0.18); color: #bfdbfe; border: 1px solid rgba(37,99,235,0.45); border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+.measurement-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.measurement-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.measurement-persist { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.measurement-panel label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); padding: 0; border: 0; background: none; }
+.measurement-panel input[type="checkbox"] { width: auto; }
+.measurement-table-wrap { max-height: 240px; overflow: auto; border: 1px solid rgba(148,163,184,0.18); border-radius: 8px; background: rgba(10,15,24,0.65); box-shadow: inset 0 0 0 1px rgba(15,23,42,0.35); }
+.measurement-table { width: 100%; border-collapse: collapse; font-size: 13px; color: #e5e7eb; }
+.measurement-table thead th { position: sticky; top: 0; background: rgba(15,23,42,0.95); text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(148,163,184,0.25); font-weight: 600; letter-spacing: .02em; }
+.measurement-table tbody td { padding: 6px 10px; border-bottom: 1px solid rgba(148,163,184,0.15); font-variant-numeric: tabular-nums; }
+.measurement-table tbody tr:nth-child(odd) { background: rgba(15,23,42,0.35); }
+.measurement-table tbody tr.renorm td { color: #fcd34d; }
+.measurement-table tbody tr.renorm td:last-child::before { content: '\25CF'; margin-right: 6px; color: #fbbf24; }
+.measurement-empty { margin: 0; font-size: 12px; color: var(--muted); }
+.measurement-panel[data-has-data="true"] .measurement-empty { display: none; }
+.measurement-panel[data-has-data="false"] .measurement-empty { display: block; }
+.measurement-panel .btn { min-height: 32px; padding: 6px 12px; }
 .lyapunov-overlay { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; }
 .lyapunov-overlay[hidden] { display: none !important; }
 .lyapunov-overlay .overlay-backdrop { position: absolute; inset: 0; background: rgba(8,11,20,0.75); backdrop-filter: blur(3px); }
