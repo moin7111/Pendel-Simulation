@@ -17,7 +17,6 @@
         <button id="toggleTrail" class="btn">Spur an/aus</button>
         <button id="exportCsv" class="btn">Export CSV</button>
         <button id="exportPng" class="btn">Screenshot</button>
-        <button id="openLyapunov" class="btn">Lyapunov Explorer</button>
         <button id="resetBtn" class="btn">Reset</button>
         <button id="startBtn" class="btn primary">Start</button>
         <button id="stopBtn" class="btn">Stopp</button>
@@ -52,9 +51,53 @@
         </div>
         <section class="measurement-panel" id="measurementPanel" aria-live="polite" data-has-data="false">
           <header class="measurement-header">
-            <h2>Messpunkte</h2>
+            <div>
+              <h2>Messung &amp; Analyse</h2>
+              <p class="muted small">Live-Lyapunov-Auswertung direkt neben der Simulation</p>
+            </div>
             <span class="measurement-count" id="measurementCount">0</span>
           </header>
+
+          <div class="measurement-controls">
+            <div class="measurement-settings">
+              <label for="measurementDelta">
+                Δθ Startabweichung (°)
+                <input
+                  id="measurementDelta"
+                  type="number"
+                  step="0.01"
+                  min="0.0001"
+                  value="0.05"
+                />
+              </label>
+              <label for="measurementInterval">
+                Renorm-Intervall (s)
+                <input
+                  id="measurementInterval"
+                  type="number"
+                  step="0.01"
+                  min="0.02"
+                  value="0.12"
+                />
+              </label>
+              <label for="measurementSample">
+                Sampling (ms)
+                <input
+                  id="measurementSample"
+                  type="number"
+                  step="5"
+                  min="5"
+                  value="40"
+                />
+              </label>
+            </div>
+            <div class="measurement-run">
+              <button type="button" id="measurementStart" class="btn primary">Messung starten</button>
+              <button type="button" id="measurementStop" class="btn">Stopp</button>
+              <button type="button" id="measurementReset" class="btn">Zurücksetzen</button>
+            </div>
+          </div>
+
           <div class="measurement-toolbar">
             <div class="measurement-persist">
               <input type="checkbox" id="measurementPersist" />
@@ -66,6 +109,55 @@
               <button type="button" id="measurementClear" class="btn">Leeren</button>
             </div>
           </div>
+
+          <dl class="measurement-status" aria-live="polite">
+            <div>
+              <dt>Status</dt>
+              <dd id="measurementStatus">Bereit</dd>
+            </div>
+            <div>
+              <dt>λ aktuell</dt>
+              <dd id="measurementLambda">n/a</dd>
+            </div>
+            <div>
+              <dt>λ Ø</dt>
+              <dd id="measurementLambdaAvg">n/a</dd>
+            </div>
+            <div>
+              <dt>Renormierungen</dt>
+              <dd id="measurementRenorm">0</dd>
+            </div>
+            <div>
+              <dt>Messdauer</dt>
+              <dd id="measurementTime">0.00 s</dd>
+            </div>
+            <div>
+              <dt>Abstand zuletzt</dt>
+              <dd id="measurementDistance">–</dd>
+            </div>
+          </dl>
+
+          <div class="measurement-charts">
+            <div class="chart-card">
+              <header>ln d(t)</header>
+              <canvas
+                id="measurementLogCanvas"
+                width="840"
+                height="220"
+                aria-label="Logarithmischer Abstand"
+              ></canvas>
+            </div>
+            <div class="chart-card">
+              <header>λ(t)</header>
+              <canvas
+                id="measurementLambdaCanvas"
+                width="840"
+                height="220"
+                aria-label="Laufender Lyapunov-Schätzwert"
+              ></canvas>
+            </div>
+          </div>
+
           <div class="measurement-table-wrap" id="measurementTableWrap">
             <table class="measurement-table" aria-describedby="measurementEmpty">
               <thead>
@@ -78,7 +170,7 @@
               <tbody id="measurementTableBody"></tbody>
             </table>
           </div>
-          <p class="measurement-empty" id="measurementEmpty">Noch keine Messdaten - Messung im Lyapunov Explorer starten.</p>
+          <p class="measurement-empty" id="measurementEmpty">Noch keine Messdaten - Messung starten, um Distanz und λ live zu sehen.</p>
         </section>
       </section>
       <aside class="controls">
@@ -118,121 +210,6 @@
         </div>
       </aside>
     </main>
-
-    <div id="lyapunovOverlay" class="lyapunov-overlay" hidden>
-      <div class="overlay-backdrop" aria-hidden="true"></div>
-      <section
-        class="overlay-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="lyapunovTitle"
-        tabindex="-1"
-      >
-        <header class="overlay-header">
-          <div>
-            <h2 id="lyapunovTitle">Lyapunov Explorer</h2>
-            <p class="muted small">Sensitivitätsanalyse direkt aus dem Doppelpendel</p>
-          </div>
-          <button
-            type="button"
-            id="closeLyapunov"
-            class="icon-btn"
-            aria-label="Lyapunov Explorer schließen"
-          >
-            ×
-          </button>
-        </header>
-        <section class="lyapunov-body">
-          <aside class="lyapunov-controls" aria-label="Lyapunov Steuerung">
-            <div class="lyapunov-section">
-              <h3>Messung</h3>
-              <label>
-                <span>Δθ Startabweichung (°)</span>
-                <input
-                  id="lyapunovDelta"
-                  type="number"
-                  step="0.01"
-                  min="0.0001"
-                  value="0.05"
-                />
-              </label>
-              <label>
-                <span>Renorm-Intervall (s)</span>
-                <input
-                  id="lyapunovInterval"
-                  type="number"
-                  step="0.01"
-                  min="0.02"
-                  value="0.12"
-                />
-              </label>
-              <label>
-                <span>Sampling (ms)</span>
-                <input
-                  id="lyapunovSample"
-                  type="number"
-                  step="5"
-                  min="5"
-                  value="40"
-                />
-              </label>
-              <div class="lyapunov-buttons">
-                <button type="button" id="lyapunovStart" class="btn primary">Messung starten</button>
-                <button type="button" id="lyapunovStop" class="btn">Stopp</button>
-                <button type="button" id="lyapunovReset" class="btn">Zurücksetzen</button>
-              </div>
-            </div>
-            <div class="lyapunov-section">
-              <h3>Auswertung</h3>
-              <p class="meta">
-                Status: <strong id="lyapunovStatus">Bereit</strong>
-              </p>
-              <p class="meta">
-                λ aktuell: <strong id="lyapunovLambda">n/a</strong>
-              </p>
-              <p class="meta">
-                λ Ø: <strong id="lyapunovLambdaAvg">n/a</strong>
-              </p>
-              <p class="meta">
-                Renormierungen: <strong id="lyapunovRenorm">0</strong>
-              </p>
-              <p class="meta">
-                Messdauer: <strong id="lyapunovTime">0.00 s</strong>
-              </p>
-              <p class="meta">
-                |δ| zuletzt: <strong id="lyapunovDistance">–</strong>
-              </p>
-            </div>
-            <div class="lyapunov-section muted small" id="lyapunovHints">
-              <p>
-                Hinweis: Die Messung nutzt zwei virtuelle Doppelpendel mit minimaler Startabweichung.
-                Nach Parameteränderungen empfiehlt sich ein Neustart der Messung.
-              </p>
-            </div>
-          </aside>
-          <div class="lyapunov-charts">
-            <div class="chart-card">
-              <header>ln d(t)</header>
-              <canvas
-                id="lyapunovLogCanvas"
-                width="840"
-                height="320"
-                aria-label="Logarithmischer Abstand"
-              ></canvas>
-            </div>
-            <div class="chart-card">
-              <header>λ(t)</header>
-              <canvas
-                id="lyapunovLambdaCanvas"
-                width="840"
-                height="320"
-                aria-label="Laufender Lyapunov-Schätzwert"
-              ></canvas>
-            </div>
-          </div>
-        </section>
-      </section>
-    </div>
 
     <script src="/static/sim.js"></script>
   </body>
