@@ -123,9 +123,26 @@ class PendulumSim {
     this.historySampleInterval = 0.02; // seconds between history samples
     this._historyAccumulator = 0;
     this.exportLog = [];
+    this.measurements = [];
+    this.measurementDisplayLimit = 500;
+    this.measurementFlushThreshold = 1000;
+    this.measurementPersist = false;
+    this._measurementBuffer = [];
+    this._measurementRenderQueue = [];
+    this._measurementRenderScheduled = false;
+    this._measurementElements = {
+      panel: null,
+      body: null,
+      count: null,
+      wrap: null,
+      empty: null,
+      clear: null,
+    };
+    this.measurementUploadUrl = null;
     this._clearHistories();
     this._bindInputs();
     this._setupLyapunov();
+    this._initMeasurementUI();
     this._syncInputsFromActiveSystem();
     this._recordSnapshot(0, true);
     this._draw();
@@ -158,6 +175,7 @@ class PendulumSim {
       this.mode = 'double';
       this._recordSnapshot(0, true);
       this._draw();
+      this._setMeasurementEmptyState(this.measurements.length > 0);
       if (this.lyapunov?.ready && !this.lyapunov.running) {
         this._updateLyapunovUI(undefined, 'Messung bereit');
       }
@@ -171,6 +189,7 @@ class PendulumSim {
       }
       this._recordSnapshot(0, true);
       this._draw();
+      this._setMeasurementEmptyState(this.measurements.length > 0);
     });
 
     // trails
@@ -249,7 +268,7 @@ class PendulumSim {
     if (this.running) return;
     this.running = true;
     if (this.lyapunov?.running) {
-      this._updateLyapunovUI(undefined, 'Messung l?uft');
+      this._updateLyapunovUI(undefined, 'Messung laeuft');
     }
     this.lastTs = performance.now();
     const loop = (ts) => {
@@ -742,6 +761,8 @@ class PendulumSim {
       sampleTimer: 0,
       renormTimer: 0,
       data: { time: [], log: [], lambda: [] },
+      measurements: this.measurements,
+      _renormSinceLastSample: false,
     };
 
     if (closeBtn) closeBtn.addEventListener('click', () => this._closeLyapunov());
@@ -762,6 +783,225 @@ class PendulumSim {
 
     this._drawLyapunovCharts(true);
     this._updateLyapunovUI();
+  }
+  _initMeasurementUI() {
+    const panel = document.getElementById('measurementPanel');
+    const body = document.getElementById('measurementTableBody');
+    const count = document.getElementById('measurementCount');
+    const wrap = document.getElementById('measurementTableWrap');
+    const empty = document.getElementById('measurementEmpty');
+    const clearBtn = document.getElementById('measurementClear');
+    this._measurementElements = { panel, body, count, wrap, empty, clear: clearBtn };
+
+    const persistCheckbox = document.getElementById('measurementPersist');
+    if (persistCheckbox) {
+      this.measurementPersist = !!persistCheckbox.checked;
+      persistCheckbox.addEventListener('change', (event) => {
+        this.measurementPersist = !!event.target.checked;
+      });
+    }
+
+    const exportCsvBtn = document.getElementById('measurementExportCsv');
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', () => this.exportMeasurementsAsCSV());
+    }
+    const exportJsonBtn = document.getElementById('measurementExportJson');
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', () => this.exportMeasurementsAsJSON());
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => this._clearMeasurements());
+      clearBtn.disabled = this.measurements.length === 0;
+    }
+
+    this._measurementRenderQueue = [];
+    this._measurementRenderScheduled = false;
+    this._renderMeasurementsFromSource();
+  }
+  _renderMeasurementsFromSource() {
+    const body = this._measurementElements.body;
+    if (!body) return;
+    body.innerHTML = '';
+    const slice = this.measurements.slice(-this.measurementDisplayLimit);
+    for (let i = 0; i < slice.length; i++) {
+      this._appendMeasurementRow(slice[i], body);
+    }
+    if (this._measurementElements.count) {
+      this._measurementElements.count.textContent = String(this.measurements.length);
+    }
+    this._setMeasurementEmptyState(this.measurements.length > 0);
+    const wrap = this._measurementElements.wrap;
+    if (wrap) {
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+  }
+  _queueMeasurementRender(entry) {
+    if (!this._measurementElements.body) return;
+    this._measurementRenderQueue.push(entry);
+    if (this._measurementRenderScheduled) return;
+    this._measurementRenderScheduled = true;
+    requestAnimationFrame(() => this._flushMeasurementRenderQueue());
+  }
+  _flushMeasurementRenderQueue() {
+    const body = this._measurementElements.body;
+    if (!body) {
+      this._measurementRenderQueue = [];
+      this._measurementRenderScheduled = false;
+      return;
+    }
+    const wrap = this._measurementElements.wrap;
+    const limit = this.measurementDisplayLimit;
+    const autoScroll = wrap ? (wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop) <= 16 : false;
+    for (let i = 0; i < this._measurementRenderQueue.length; i++) {
+      this._appendMeasurementRow(this._measurementRenderQueue[i], body);
+      while (body.rows && body.rows.length > limit) {
+        body.deleteRow(0);
+      }
+    }
+    this._measurementRenderQueue = [];
+    this._measurementRenderScheduled = false;
+    if (this._measurementElements.count) {
+      this._measurementElements.count.textContent = String(this.measurements.length);
+    }
+    this._setMeasurementEmptyState(this.measurements.length > 0);
+    if (wrap && autoScroll) {
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+  }
+  _appendMeasurementRow(entry, bodyOverride) {
+    const body = bodyOverride || this._measurementElements.body;
+    if (!body) return;
+    const tr = document.createElement('tr');
+    if (entry.renorm) tr.classList.add('renorm');
+    const timeCell = document.createElement('td');
+    const timeFixed = Number.isFinite(entry.t) ? entry.t.toFixed(2) : 'N/A';
+    timeCell.textContent = timeFixed;
+    if (Number.isFinite(entry.t)) {
+      timeCell.title = entry.t.toFixed(4);
+    }
+    const distCell = document.createElement('td');
+    if (Number.isFinite(entry.dist)) {
+      distCell.textContent = entry.dist.toFixed(2);
+      distCell.title = entry.dist.toPrecision(6);
+    } else {
+      distCell.textContent = 'N/A';
+    }
+    const renormCell = document.createElement('td');
+    renormCell.textContent = entry.renorm ? 'Ja' : '-';
+    if (entry.renorm) {
+      renormCell.setAttribute('aria-label', 'Renormierung');
+    }
+    tr.appendChild(timeCell);
+    tr.appendChild(distCell);
+    tr.appendChild(renormCell);
+    body.appendChild(tr);
+  }
+  _setMeasurementEmptyState(hasData) {
+    const panel = this._measurementElements.panel;
+    if (panel) {
+      panel.setAttribute('data-has-data', hasData ? 'true' : 'false');
+    }
+    const empty = this._measurementElements.empty;
+    if (empty) {
+      if (hasData) {
+        empty.textContent = '';
+      } else {
+        empty.textContent = this.mode === 'double'
+          ? 'Noch keine Messdaten - Messung im Lyapunov Explorer starten.'
+          : 'Messdaten nur im Doppelpendel-Modus verfuegbar.';
+      }
+    }
+    const clearBtn = this._measurementElements.clear;
+    if (clearBtn) {
+      clearBtn.disabled = !hasData;
+    }
+  }
+  _clearMeasurements() {
+    this.measurements.length = 0;
+    this._measurementBuffer = [];
+    if (this.lyapunov) {
+      this.lyapunov.measurements = this.measurements;
+      this.lyapunov._renormSinceLastSample = false;
+    }
+    this._measurementRenderQueue = [];
+    this._measurementRenderScheduled = false;
+    this._renderMeasurementsFromSource();
+  }
+  _recordMeasurement(timestamp, distance, renorm) {
+    if (!Number.isFinite(timestamp) || !Number.isFinite(distance)) return;
+    const entry = {
+      t: Number(timestamp.toFixed(4)),
+      dist: Number(distance.toPrecision(6)),
+      renorm: !!renorm,
+    };
+    this.measurements.push(entry);
+    this._measurementBuffer.push(entry);
+    const maxStored = 100000;
+    const pruneThreshold = maxStored + 20000;
+    if (this.measurements.length > pruneThreshold) {
+      this.measurements.splice(0, this.measurements.length - maxStored);
+    }
+    if (this._measurementBuffer.length >= this.measurementFlushThreshold) {
+      this._maybeUploadMeasurementChunk();
+    }
+    this._queueMeasurementRender(entry);
+  }
+  async _maybeUploadMeasurementChunk() {
+    if (!this.measurementUploadUrl) {
+      if (this._measurementBuffer.length > this.measurementFlushThreshold) {
+        this._measurementBuffer.splice(0, this._measurementBuffer.length - this.measurementFlushThreshold);
+      }
+      return;
+    }
+    const payload = this._measurementBuffer.slice();
+    const body = JSON.stringify(payload);
+    try {
+      const res = await fetch(this.measurementUploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      this._measurementBuffer = [];
+    } catch (err) {
+      console.warn('Messdaten konnten nicht hochgeladen werden:', err);
+      if (this._measurementBuffer.length > this.measurementFlushThreshold * 2) {
+        this._measurementBuffer.splice(0, this._measurementBuffer.length - this.measurementFlushThreshold * 2);
+      }
+    }
+  }
+  exportMeasurementsAsCSV() {
+    if (!this.measurements.length) return;
+    const header = 'time_s,distance_m,renorm\n';
+    const lines = this.measurements.map((entry) => {
+      const time = Number.isFinite(entry.t) ? entry.t.toFixed(4) : '';
+      const dist = Number.isFinite(entry.dist) ? entry.dist.toPrecision(6) : '';
+      const renorm = entry.renorm ? '1' : '0';
+      return `${time},${dist},${renorm}`;
+    });
+    const modeLabel = this.mode === 'double' ? 'double' : 'single';
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').split('.')[0];
+    this._downloadMeasurementBlob(`pendulum-measurements-${modeLabel}-${stamp}.csv`, 'text/csv;charset=utf-8;', header + lines.join('\n'));
+  }
+  exportMeasurementsAsJSON() {
+    if (!this.measurements.length) return;
+    const payload = JSON.stringify(this.measurements, null, 2);
+    const modeLabel = this.mode === 'double' ? 'double' : 'single';
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').split('.')[0];
+    this._downloadMeasurementBlob(`pendulum-measurements-${modeLabel}-${stamp}.json`, 'application/json', payload);
+  }
+  _downloadMeasurementBlob(filename, mime, content) {
+    try {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download fehlgeschlagen:', err);
+    }
   }
   _openLyapunov() {
     const L = this.lyapunov;
@@ -786,7 +1026,7 @@ class PendulumSim {
     const L = this.lyapunov;
     if (!L) return;
     if (this.mode !== 'double') {
-      this._updateLyapunovUI(undefined, 'Nur im Doppelpendel-Modus verf?gbar');
+      this._updateLyapunovUI(undefined, 'Nur im Doppelpendel-Modus verfuegbar');
       return;
     }
     const sys = this.systems[this.activeSystemIndex] || this.systems[0];
@@ -830,9 +1070,16 @@ class PendulumSim {
     L.data = { time: [], log: [], lambda: [] };
     L.running = true;
     L.ready = true;
+    L._renormSinceLastSample = false;
+
+    if (!this.measurementPersist) {
+      this._clearMeasurements();
+    } else {
+      this._setMeasurementEmptyState(this.measurements.length > 0);
+    }
 
     this._drawLyapunovCharts(true);
-    this._updateLyapunovUI(delta0, 'Messung l?uft');
+    this._updateLyapunovUI(delta0, 'Messung laeuft');
 
     if (autoStart && !this.running) {
       this.start();
@@ -842,6 +1089,11 @@ class PendulumSim {
     const L = this.lyapunov;
     if (!L) return;
     L.running = false;
+    if (!this.measurementPersist) {
+      this._clearMeasurements();
+    } else {
+      this._setMeasurementEmptyState(this.measurements.length > 0);
+    }
     this._updateLyapunovUI(undefined, message ?? 'Messung pausiert');
   }
   _resetLyapunov() {
@@ -862,6 +1114,12 @@ class PendulumSim {
     L.sampleTimer = 0;
     L.renormTimer = 0;
     L.data = { time: [], log: [], lambda: [] };
+    L._renormSinceLastSample = false;
+    if (!this.measurementPersist) {
+      this._clearMeasurements();
+    } else {
+      this._setMeasurementEmptyState(this.measurements.length > 0);
+    }
     this._drawLyapunovCharts(true);
     this._updateLyapunovUI();
   }
@@ -904,6 +1162,7 @@ class PendulumSim {
       this._lyapunovRenormalize(diff);
       distance = L.delta0;
       L.lastDistance = L.delta0;
+      L._renormSinceLastSample = true;
     }
 
     const sampleRaw = Number.parseFloat(L.sampleInput?.value ?? '40');
@@ -922,6 +1181,8 @@ class PendulumSim {
         L.data.log.shift();
         L.data.lambda.shift();
       }
+      this._recordMeasurement(this.time, distance, L._renormSinceLastSample);
+      L._renormSinceLastSample = false;
       this._drawLyapunovCharts();
     }
 
@@ -1147,7 +1408,7 @@ class PendulumSim {
       if (overrideStatus) {
         statusText = overrideStatus;
       } else if (L.running && this.running) {
-        statusText = 'Messung l?uft';
+        statusText = 'Messung laeuft';
       } else if (L.running && !this.running) {
         statusText = 'Pausiert (Simulation gestoppt)';
       } else if (L.ready) {

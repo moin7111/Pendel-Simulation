@@ -25,29 +25,61 @@
     </header>
 
     <main class="app-main">
-      <section class="canvas-wrap">
-        <canvas id="pendulumCanvas" width="900" height="600"></canvas>
-        <div class="time-display">Zeit: <span id="timeValue">0.00</span> s</div>
-        <div class="mini-panels">
-          <div class="mini-chart" aria-live="polite" id="phasePanel0">
-            <header>Phase θ₁–ω₁ (Pendel 1)</header>
-            <canvas
-              id="phaseCanvas0"
-              width="260"
-              height="140"
-              aria-label="Phasenraum der ersten Masse für Pendel 1"
-            ></canvas>
-          </div>
-          <div class="mini-chart" aria-live="polite" id="phasePanel1" hidden>
-            <header>Phase θ₁–ω₁ (Pendel 2)</header>
-            <canvas
-              id="phaseCanvas1"
-              width="260"
-              height="140"
-              aria-label="Phasenraum der ersten Masse für Pendel 2"
-            ></canvas>
+      <section class="visualization-column">
+        <div class="canvas-wrap">
+          <canvas id="pendulumCanvas" width="900" height="600"></canvas>
+          <div class="time-display">Zeit: <span id="timeValue">0.00</span> s</div>
+          <div class="mini-panels">
+            <div class="mini-chart" aria-live="polite" id="phasePanel0">
+              <header>Phase θ₁–ω₁ (Pendel 1)</header>
+              <canvas
+                id="phaseCanvas0"
+                width="260"
+                height="140"
+                aria-label="Phasenraum der ersten Masse für Pendel 1"
+              ></canvas>
+            </div>
+            <div class="mini-chart" aria-live="polite" id="phasePanel1" hidden>
+              <header>Phase θ₁–ω₁ (Pendel 2)</header>
+              <canvas
+                id="phaseCanvas1"
+                width="260"
+                height="140"
+                aria-label="Phasenraum der ersten Masse für Pendel 2"
+              ></canvas>
+            </div>
           </div>
         </div>
+        <section class="measurement-panel" id="measurementPanel" aria-live="polite" data-has-data="false">
+          <header class="measurement-header">
+            <h2>Messpunkte</h2>
+            <span class="measurement-count" id="measurementCount">0</span>
+          </header>
+          <div class="measurement-toolbar">
+            <div class="measurement-persist">
+              <input type="checkbox" id="measurementPersist" />
+              <label for="measurementPersist">Daten bei Reset behalten</label>
+            </div>
+            <div class="measurement-actions">
+              <button type="button" id="measurementExportCsv" class="btn">Export CSV</button>
+              <button type="button" id="measurementExportJson" class="btn">Export JSON</button>
+              <button type="button" id="measurementClear" class="btn">Leeren</button>
+            </div>
+          </div>
+          <div class="measurement-table-wrap" id="measurementTableWrap">
+            <table class="measurement-table" aria-describedby="measurementEmpty">
+              <thead>
+                <tr>
+                  <th scope="col">Zeit [s]</th>
+                  <th scope="col">Abstand [m]</th>
+                  <th scope="col">Renorm</th>
+                </tr>
+              </thead>
+              <tbody id="measurementTableBody"></tbody>
+            </table>
+          </div>
+          <p class="measurement-empty" id="measurementEmpty">Noch keine Messdaten - Messung im Lyapunov Explorer starten.</p>
+        </section>
       </section>
       <aside class="controls">
         <div class="control-group">
