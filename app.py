@@ -38,6 +38,10 @@ def create_app() -> Flask:
     def abi():
         return send_from_directory(app.template_folder, "abi.html")
 
+    @app.get("/architecture")
+    def architecture():
+        return send_from_directory(app.template_folder, "architecture.html")
+
     @app.get("/static/<path:filename>")
     def static_files(filename: str):
         return send_from_directory(app.static_folder, filename)
